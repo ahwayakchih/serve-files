@@ -45,6 +45,5 @@
   "repository": {
     "type": "git",
     "url": "git://github.com/ahwayakchih/serve-files.git"
-  },
-  "tonicExample": "const serveFiles = require('serve-files');"
+  }
 }
