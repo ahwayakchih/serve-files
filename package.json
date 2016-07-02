@@ -1,0 +1,50 @@
+{
+  "name": "serve-files",
+  "version": "1.0.0",
+  "description": "Serve files",
+  "keywords": "file, server",
+  "main": "index.js",
+  "bin": "./bin/serve-files",
+  "scripts": {
+    "test": "tape ./test/index.js | ./node_modules/.bin/tap-diff",
+    "benchmarks": "(INFO=1 npm run -s benchmark1files && npm run -s benchmark5files && npm run -s benchmark10files) > ./reports/benchmarks.txt && (./node_modules/.bin/opener ./reports/benchmarks.txt &)",
+    "benchmark1files": "FILES=1 node ./benchmarks/index.js",
+    "benchmark5files": "FILES=5 node ./benchmarks/index.js",
+    "benchmark10files": "FILES=10 node ./benchmarks/index.js",
+    "doc": "./node_modules/.bin/jsdoc -d reports/jsdoc -c tools/jsdoc.json --readme README.md -r index.js && (./node_modules/.bin/opener ./reports/jsdoc/index.html &)",
+    "checkCoverage": "node --harmony-proxies ./node_modules/.bin/istanbul cover --dir reports/coverage ./node_modules/.bin/tape -- ./test/index.js > /dev/null && (./node_modules/.bin/opener ./reports/coverage/lcov-report/index.html &)",
+    "checkMemory": "mkdir -p reports && node --expose-gc ./test/memory.js && echo 'heapsnapshots created in ./reports directory'",
+    "start": "./bin/serve-files"
+  },
+  "engines": {
+    "node": ">=4.4.5"
+  },
+  "devDependencies": {
+    "async": "^2.0.0-rc.4",
+    "beautify-benchmark": "git+https://github.com/ahwayakchih/beautify-benchmark.git",
+    "benchmark": "^2.1.0",
+    "docdash": "^0.1.0",
+    "eslint": "^2.9.0",
+    "heapdump": "^0.3.7",
+    "istanbul": "^0.4.3",
+    "jsdoc": "git+https://github.com/jsdoc3/jsdoc.git",
+    "needle": "^1.0.0",
+    "opener": "^1.4.1",
+    "serve-static": "^1.11.1",
+    "statique": "^3.2.4",
+    "tap-diff": "^0.1.1",
+    "tape": "^4.5.1",
+    "tape-catch": "^1.0.5"
+  },
+  "homepage": "https://github.com/ahwayakchih/serve-files",
+  "author": "Marcin Konicki <ahwayakchih@neoni.net>",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ahwayakchih/serve-files/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/ahwayakchih/serve-files.git"
+  },
+  "tonicExample": "const serveFiles = require('serve-files');"
+}

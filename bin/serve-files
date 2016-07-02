@@ -1,0 +1,84 @@
+#!/usr/bin/env node
+
+const fs         = require('fs');
+const http       = require('http');
+const path       = require('path');
+const serveFiles = require('../index.js');
+
+if (!process.argv[2]) {
+	console.log(`USAGE: node ${path.basename(module.filename)} [root_directory] [host_name[:port_number]] [port_number]\n`);
+	process.exit(0);
+}
+
+var root = process.cwd();
+var port = 0;
+var host = null;
+
+(function () {
+	var value = false;
+	var stats = false;
+	for (var i = 2; i < process.argv.length; i++) {
+		value = process.argv[i];
+		if (value.match(/^\d+$/)) {
+			port = value;
+		}
+		else if (value.indexOf(path.sep) !== -1 || value.match(/^\./)) {
+			root = value;
+		}
+		else if (value === 'localhost' || (stats = value.match(/^(\d+\.\d+\.\d+\.\d+)(:\d+|)$/))) {
+			host = stats[1];
+			if (stats[2]) {
+				port = stats[2].substring(1);
+			}
+		}
+		else {
+			try {
+				stats = fs.statSync(value);
+				if (!stats || !stats.isDirectory()) {
+					host = value;
+				}
+				else {
+					root = value;
+				}
+			}
+			catch (e) {
+				host = value;
+			}
+		}
+	}
+})();
+
+var server = http.createServer(serveFiles.createFileResponseHandler({
+	documentRoot       : root,
+	followSymbolicLinks: false,
+	cacheTimeInSeconds : 3600
+}));
+
+server.listen(port, host, null, function () {
+	var address = this.address();
+	console.log(`Server is serving files from ${root} waiting for connections on http://` + (host || 'localhost') + `:${address.port}/ - have fun!`);
+});
+
+// Keep track of connections, to enforce killing them when server must be stopped.
+var connections = {};
+server.on('connection', function (socket) {
+	socket._cid = process.hrtime();
+	connections[socket._cid] = socket;
+
+	socket.on('end', function () {
+		delete connections[this._cid];
+	});
+});
+
+['SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGILL', 'SIGTRAP', 'SIGABRT',
+ 'SIGBUS', 'SIGFPE', 'SIGUSR1', 'SIGSEGV', 'SIGUSR2', 'SIGTERM'].forEach(signal => {
+	process.once(signal, () => {
+		console.log(`Got ${signal}, stopping server...`);
+		server.close(() => {
+			console.log(`Server stopped. Bye!`);
+			process.exit(0);
+		});
+
+		Object.keys(connections).forEach(cid => connections[cid].destroy());
+	});
+});
