@@ -88,6 +88,11 @@ app.request.nodeValue('fileResponse', function (filePath, request, callback) {
 });
 
 app.route('GET *', function (fileResponse) {
+  // Make sure that there is a `body`, or web-pockets will serve fileResponse as JSON object.
+  if (!fileResponse.body) {
+    fileResponse.body = '';
+  }
+
   // Workaround web-pockets bug
   fileResponse.headers['content-type'] = fileResponse.headers['Content-Type'];
   delete fileResponse.headers['Content-Type'];
