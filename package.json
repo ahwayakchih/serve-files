@@ -23,7 +23,7 @@
     "async": "^2.0.0-rc.4",
     "beautify-benchmark": "git+https://github.com/ahwayakchih/beautify-benchmark.git",
     "benchmark": "^2.1.0",
-    "docdash": "^0.1.0",
+    "docdash": "^0.4.0",
     "eslint": "^3.0.0",
     "heapdump": "^0.3.7",
     "istanbul": "^0.4.3",
