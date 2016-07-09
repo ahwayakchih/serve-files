@@ -9,6 +9,7 @@ It is somewhere in between [`serve-static`](https://github.com/expressjs/serve-s
 - it is easy to use with other frameworks, like [`web-pockets`](https://github.com/grncdr/web-pockets),
 - it allows to build own file request handlers on top of its exported functions,
 - it supports bytes range requests (e.g., media streaming),
+- it does not have dependencies,
 - it does not support path overrides (you have to add that on top of this module yourself).
  
 If you're looking for file serving with all bells and whistles, `serve-static` is probably better for you (or use `send` module directly).
@@ -108,7 +109,7 @@ These benchmarks are just to make sure that working with `serve-files` is not sl
 You can re-run benchmarks locally with: `npm run benchmarks`.
 
 ```markdown
-Running on node v6.2.2 with Intel(R) Core(TM) i7-3537U CPU @ 2.00GHz x 4
+Running on node v6.3.0 with Intel(R) Core(TM) i7-3537U CPU @ 2.00GHz x 4
 
 Testing:
 - serve-static v1.11.1 https://github.com/expressjs/serve-static#readme  
@@ -119,23 +120,23 @@ Test of serving 1 files in parallel
 
   3 tests completed.
 
-  serve-files  x 894 ops/sec ±1.86% (76 runs sampled)
-  serve-static x 843 ops/sec ±3.56% (75 runs sampled)
-  statique     x 837 ops/sec ±2.66% (73 runs sampled)
+  serve-files  x 902 ops/sec ±2.55% (75 runs sampled)
+  statique     x 893 ops/sec ±3.50% (76 runs sampled)
+  serve-static x 826 ops/sec ±4.02% (76 runs sampled)
 
 Test of serving 5 files in parallel
 
   3 tests completed.
 
-  serve-files  x 214 ops/sec ±2.77% (71 runs sampled)
-  statique     x 199 ops/sec ±3.07% (71 runs sampled)
-  serve-static x 197 ops/sec ±4.74% (74 runs sampled)
+  serve-files  x 217 ops/sec ±2.52% (72 runs sampled)
+  statique     x 210 ops/sec ±3.41% (74 runs sampled)
+  serve-static x 208 ops/sec ±3.47% (75 runs sampled)
 
 Test of serving 10 files in parallel
 
   3 tests completed.
 
-  serve-files  x   112 ops/sec ±2.28% (74 runs sampled)
-  statique     x   106 ops/sec ±2.69% (70 runs sampled)
-  serve-static x 99.93 ops/sec ±12.68% (71 runs sampled)
+  serve-files  x 127 ops/sec ±3.03% (74 runs sampled)
+  statique     x 115 ops/sec ±2.79% (76 runs sampled)
+  serve-static x 102 ops/sec ±12.33% (72 runs sampled)
 ```

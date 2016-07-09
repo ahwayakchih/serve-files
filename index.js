@@ -209,6 +209,8 @@ function getResponseData (fileStats, headers) {
 /**
  * Creates responseData object with body set to readable stream of requested file range(s).
  *
+ * @todo: Implement support for multiple ranges (multipart/byteranges)
+ *
  * @param {!external:"fs.Stats"} fileStats
  * @param {!string}              fileStats.path   path to the file in local filesystem
  * @param {!Object}              headers
@@ -219,7 +221,6 @@ function getResponseDataRanges (fileStats, headers) {
 		return getResponseDataWhole(fileStats, headers);
 	}
 
-	// @todo: add support for multiple ranges (multipart/byteranges)
 	const maxEnd = Math.max(fileStats.size - 1, 0);
 	var start = headers.range.replace(/^bytes=/, '').match(/(-?[^-]+)(?:-(.+)|)/) || [];
 	var end = Math.min(parseInt(start[1 + 1] || maxEnd, 10) || 0, maxEnd);

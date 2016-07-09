@@ -25,6 +25,7 @@ test.add('serve-static', {
 	defer: true,
 	setup: function () {
 		var send = serveStatic(path.dirname(module.filename), {
+			// Try to disable features that are not supported by serve-files in hope for more "fair" comparison
 			acceptRanges: true,
 			cacheControl: true,
 			dotfiles    : 'allow',

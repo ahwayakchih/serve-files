@@ -48,19 +48,19 @@ var host = null;
 	}
 })();
 
-var server = http.createServer(serveFiles.createFileResponseHandler({
+const server = http.createServer(serveFiles.createFileResponseHandler({
 	documentRoot       : root,
 	followSymbolicLinks: false,
 	cacheTimeInSeconds : 3600
 }));
 
 server.listen(port, host, null, function () {
-	var address = this.address();
+	const address = this.address();
 	console.log(`Server is serving files from ${root} waiting for connections on http://` + (host || 'localhost') + `:${address.port}/ - have fun!`);
 });
 
 // Keep track of connections, to enforce killing them when server must be stopped.
-var connections = {};
+const connections = {};
 server.on('connection', function (socket) {
 	socket._cid = process.hrtime();
 	connections[socket._cid] = socket;
