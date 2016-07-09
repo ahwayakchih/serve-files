@@ -41,7 +41,7 @@ serve-files 8080 ~/Downloads
 That will start server on port 8080 and will serve files from your "Downloads" directory.
 
 You can pass host name (defaults to none), port number (defaults to random) and/or path to directory (defaults to current working directory) as parameters, in any order.
-It will never follow symbolic links, and always serve wils with cache headers set to one hour.
+It will never follow symbolic links, and always serve files with cache headers set to one hour.
 
 
 ## Usage for developers
