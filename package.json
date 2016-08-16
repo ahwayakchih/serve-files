@@ -20,21 +20,21 @@
     "node": ">=4.4.5"
   },
   "devDependencies": {
-    "async": "^2.0.0-rc.4",
+    "async": "^2.0.0-rc.6",
     "beautify-benchmark": "git+https://github.com/ahwayakchih/beautify-benchmark.git",
     "benchmark": "^2.1.0",
     "docdash": "^0.4.0",
     "eslint": "^3.0.0",
     "heapdump": "^0.3.7",
-    "istanbul": "^0.4.3",
+    "istanbul": "^0.4.4",
     "jsdoc": "git+https://github.com/jsdoc3/jsdoc.git",
     "needle": "^1.0.0",
     "opener": "^1.4.1",
     "serve-static": "^1.11.1",
     "statique": "^3.2.4",
     "tap-diff": "^0.1.1",
-    "tape": "^4.5.1",
-    "tape-catch": "^1.0.5"
+    "tape": "^4.6.0",
+    "tape-catch": "^1.0.6"
   },
   "homepage": "https://github.com/ahwayakchih/serve-files",
   "author": "Marcin Konicki <ahwayakchih@neoni.net>",

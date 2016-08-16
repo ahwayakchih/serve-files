@@ -172,6 +172,8 @@ function getFileStats (cfg, filePath, callback) {
  *
  * @param {!external:"fs.Stats"} fileStats
  * @param {!string}              fileStats.path                  path to the file in local filesystem
+ * @param {!Date}                fileStats.mtime                 date of last modification of file content
+ * @param {!Number}              fileStats.size                  number of bytes of data file contains
  * @param {!Object}              headers                         headers from request object (@see {@link http.IncomingMessage})
  * @param {string}               [headers.if-modified-since]
  * @param {string}               [headers.if-unmodified-since]
@@ -212,7 +214,9 @@ function getResponseData (fileStats, headers) {
  * @todo: Implement support for multiple ranges (multipart/byteranges)
  *
  * @param {!external:"fs.Stats"} fileStats
- * @param {!string}              fileStats.path   path to the file in local filesystem
+ * @param {!string}              fileStats.path    path to the file in local filesystem
+ * @param {!Date}                fileStats.mtime   date of last modification of file content
+ * @param {!Number}              fileStats.size    number of bytes of data file contains
  * @param {!Object}              headers
  * @return {module:serve-files~responseData}
  */
@@ -273,7 +277,9 @@ function getResponseDataRanges (fileStats, headers) {
  * Creates responseData object with body set to readable stream of requested file.
  *
  * @param {!external:"fs.Stats"} fileStats
- * @param {!string}              fileStats.path   path to the file in local filesystem
+ * @param {!string}              fileStats.path    path to the file in local filesystem
+ * @param {!Date}                fileStats.mtime   date of last modification of file content
+ * @param {!Number}              fileStats.size    number of bytes of data file contains
  * @param {!Object}              headers
  * @return {module:serve-files~responseData}
  */
