@@ -352,8 +352,8 @@ function prepareFileResponse (cfg, filePath, headers, callback) {
  *
  * @param {!module:serve-files~configuration} cfg
  * @param {Function[]}                        [cfg.standardResponses]
- * @param {} fileResponse
- * @param {!external:"http.ServerResponse"} res
+ * @param {module:serve-files~responseData}   fileResponse
+ * @param {!external:"http.ServerResponse"}   res
  */
 function serveFileResponse (cfg, fileResponse, res) {
 	if (cfg.standardResponses && cfg.standardResponses[fileResponse.statusCode]) {
