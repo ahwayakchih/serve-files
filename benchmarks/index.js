@@ -52,7 +52,7 @@ test.add('serve-static', {
 
 		async.parallel(tasks, err => {
 			if (err) {
-				return deferred.reject(err);
+				console.error(err);
 			}
 
 			return deferred.resolve();
@@ -81,7 +81,7 @@ test.add('statique', {
 
 		async.parallel(tasks, err => {
 			if (err) {
-				return deferred.reject(err);
+				console.error(err);
 			}
 
 			return deferred.resolve();
@@ -110,7 +110,7 @@ test.add('serve-files', {
 
 		async.parallel(tasks, err => {
 			if (err) {
-				return deferred.reject(err);
+				console.error(err);
 			}
 
 			return deferred.resolve();
