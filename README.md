@@ -109,7 +109,7 @@ These benchmarks are just to make sure that working with `serve-files` is not sl
 You can re-run benchmarks locally with: `npm run benchmarks`.
 
 ```markdown
-Running on node v7.0.0 with Intel(R) Core(TM) i7-3537U CPU @ 2.00GHz x 4
+Running on node v7.3.0 with Intel(R) Core(TM) i7-3537U CPU @ 2.00GHz x 4
 
 Testing:
 - serve-static v1.11.1 https://github.com/expressjs/serve-static#readme  
@@ -120,23 +120,23 @@ Test of serving 1 files in parallel
 
   3 tests completed.
 
-  statique     x 1,071 ops/sec ±3.56% (75 runs sampled)
-  serve-static x   977 ops/sec ±4.24% (74 runs sampled)
-  serve-files  x   935 ops/sec ±3.04% (75 runs sampled)
+  statique     x 1,062 ops/sec ±3.09% (76 runs sampled)
+  serve-static x   995 ops/sec ±5.27% (76 runs sampled)
+  serve-files  x   874 ops/sec ±2.82% (73 runs sampled)
 
 Test of serving 5 files in parallel
 
   3 tests completed.
 
-  serve-files  x 244 ops/sec ±2.93% (79 runs sampled)
-  statique     x 243 ops/sec ±4.19% (76 runs sampled)
-  serve-static x 221 ops/sec ±4.47% (70 runs sampled)
+  statique     x 258 ops/sec ±2.90% (79 runs sampled)
+  serve-files  x 256 ops/sec ±2.81% (78 runs sampled)
+  serve-static x 236 ops/sec ±6.13% (76 runs sampled)
 
 Test of serving 10 files in parallel
 
   3 tests completed.
 
-  serve-files  x 134 ops/sec ±2.79% (78 runs sampled)
-  statique     x 131 ops/sec ±4.38% (76 runs sampled)
-  serve-static x 127 ops/sec ±4.34% (75 runs sampled)
+  statique     x 132 ops/sec ±3.98% (77 runs sampled)
+  serve-files  x 131 ops/sec ±2.94% (77 runs sampled)
+  serve-static x 114 ops/sec ±14.48% (73 runs sampled)
 ```
