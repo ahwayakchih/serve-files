@@ -4,36 +4,50 @@
 
 const path = require('path');
 const serveFiles = require('../index.js');
-const heapdump = require('heapdump');
+const v8 = require('v8');
+
+function fakeResponse () {
+	return {
+		statusCode: 200,
+		setHeader : function () {}
+	};
+}
+
+function fakeRequest () {
+	return {
+		headers: {}
+	};
+}
+
+function onFakeFileInfo (cfg, req, res, filePath, fileStats) {
+	const err = fileStats instanceof Error ? fileStats : null;
+	const data = err ? null : cfg.prepareResponseData(cfg, req, res, filePath, fileStats);
+
+	if (err) {
+		res.statusCode = err.statusCode || 404;
+	}
+
+	cfg.appendCacheHeaders(res, cfg.cacheTimeInSeconds);
+
+	// @todo: think of a way to result with 500 if/when file stream errors, because headers are already sent by then :/
+	if (data && data.pipe) {
+		data.on('end', cfg.fakeEnd);
+		data.push(null);
+	}
+	else {
+		cfg.fakeEnd();
+	}
+
+	cfg.fakeEnd = null;
+}
 
 function fakeServe (callback) {
 	var cfg = serveFiles.createConfiguration({
-		documentRoot: path.dirname(module.filename)
+		documentRoot: path.dirname(module.filename),
+		fakeEnd     : callback
 	});
 
-	serveFiles.getFileStats(cfg, module.filename, (err, fileStats) => {
-		var data;
-
-		if (err || !fileStats) {
-			data = {
-				statusCode: serveFiles.HTTP_CODES.NOT_FOUND
-			};
-		}
-		else {
-			data = cfg.getFile(fileStats, {});
-		}
-
-		data.headers = serveFiles.appendCacheHeaders(data.headers || {}, cfg.cacheTimeInSeconds);
-		data.headers.Date = data.headers.Date || (new Date()).toUTCString();
-
-		if (data.body && data.body.pipe) {
-			data.body.on('end', callback);
-			data.body.push(null);
-		}
-		else {
-			callback();
-		}
-	});
+	serveFiles.getFileInfo(cfg, fakeRequest(), fakeResponse(), module.filename, onFakeFileInfo);
 }
 
 if (typeof gc !== 'function') {
@@ -48,12 +62,12 @@ function next () {
 	}
 
 	setTimeout(function () {
-		gc();
-		heapdump.writeSnapshot('reports/test-memory-1.heapsnapshot');
-	}, 100);
+		gc(true);
+		v8.writeHeapSnapshot('reports/test-memory-1.heapsnapshot');
+	}, 1000);
 }
 
-gc();
-heapdump.writeSnapshot('reports/test-memory-0.heapsnapshot');
+gc(true);
+v8.writeHeapSnapshot('reports/test-memory-0.heapsnapshot');
 
 next();
