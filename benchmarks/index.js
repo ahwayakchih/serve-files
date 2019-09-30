@@ -1,241 +1,766 @@
-const benchmark   = require('benchmark').Suite;
-const results     = require('beautify-benchmark');
-const needle      = require('needle');
-const async       = require('async');
-const http        = require('http');
-const path        = require('path');
-const os          = require('os');
+const os = require('os');
+const fork = require('child_process').fork;
+const autocannon = require('autocannon');
+const serie = require('fastseries');
 
-const serveFiles  = require('../index.js');
-const serveStatic = require('serve-static');
-const Statique    = require('statique');
+const SERVERS = [
+	// 'node-static',
+	// 'serve-files',
+	// 'serve-files-fs-cache',
+	'serve-files-fs-cache-v2',
+	// 'serve-static',
+	// 'st',
+	// 'statique'
+];
 
-if (process.env.INFO) {
-	logInfo();
+const DEFAULT_DURATION = 60;
+const DEFAULT_CONNECTIONS = 100;
+
+const DURATION = parseInt(process.env.DURATION || DEFAULT_DURATION, 10);
+const CONNECTIONS = parseInt(process.env.CONNECTIONS || DEFAULT_CONNECTIONS, 10);
+
+var docker = (function checkDocker () {
+	const fs = require('fs');
+	try {
+		return fs.readFileSync('/proc/self/cgroup', 'utf8').indexOf('/docker/') !== -1
+			&& (fs.readFileSync('/etc/os-release', 'utf8').match(/PRETTY_NAME="([^"]+)"/) || [,'unknown'])[1]
+	}
+	catch (e) {
+		return false;
+	}
+})();
+var where = docker ? `inside Docker (${docker})` : `natively (${os.release()})`;
+console.log(`Running ${where} with Node ${process.version} and ${os.cpus()[0].model} x ${os.cpus().length}.`);
+console.log(`Testing ${SERVERS.length} servers, with ${DURATION} seconds of ${CONNECTIONS} simultaneous connections each.`);
+console.log(`Test will take approximately ${(DURATION * SERVERS.length)/60} minute(s).`);
+
+function run (name, callback) {
+	var s = fork(`${__dirname}/${name}.js`);
+
+	s.once('message', m => {
+		if (!m.port) {
+			s.kill();
+			s = null;
+			callback(new Error('No `ready` message received from server script'));
+			return;
+		}
+
+		process.stdout.write(`. ${name}`);
+		autocannon({
+			url        : `http://localhost:${m.port}/index.js?foo[bar]=baz`,
+			title      : name,
+			duration   : DURATION,
+			connections: CONNECTIONS
+		}, (err, result) => {
+			s.kill();
+			s = null;
+			process.stdout.cursorTo(0);
+			process.stdout.write((err || result.non2xx ? '✗' : '✔') + ` ${name}\n`);
+			callback(err, result);
+		});
+	});
 }
 
-const files = parseInt(process.env.FILES || 1, 10);
-
-const test = benchmark('serve-files');
-
-var server;
-var filename = path.basename(module.filename);
-
-test.add('serve-static', {
-	defer: true,
-	setup: function () {
-		var send = serveStatic(path.dirname(module.filename), {
-			// Try to disable features that are not supported by serve-files in hope for more "fair" comparison
-			acceptRanges: true,
-			cacheControl: true,
-			dotfiles    : 'allow',
-			etag        : false,
-			extensions  : false,
-			fallthrough : false,
-			index       : false,
-			lastModified: true,
-			maxAge      : 0,
-			redirect    : false
-		});
-		server.on('request', function (req, res) {
-			send(req, res, function (err) {
-				console.error('Nothing was served', err);
-			});
-		});
-	},
-	fn: function (deferred) {
-		var tasks = [];
-
-		for (var i = files; i > 0; i--) {
-			tasks.push(fakeTask());
-		}
-
-		async.parallel(tasks, err => {
-			if (err) {
-				console.error(err);
-			}
-
-			return deferred.resolve();
-		});
-	},
-	teardown: function () {
-		server.removeAllListeners('request');
-	}
+const benchmarks = serie({
+	results: true
 });
 
-test.add('statique', {
-	defer: true,
-	setup: function () {
-		var send = new Statique({
-			root : path.dirname(module.filename),
-			cache: 0
-		});
-		server.on('request', send.serve.bind(send));
-	},
-	fn: function (deferred) {
-		var tasks = [];
+benchmarks({}, run, SERVERS, (err, results) => {
+	if (err) {
+		console.error(err);
+		return;
+	}
 
-		for (var i = files; i > 0; i--) {
-			tasks.push(fakeTask());
+	var tableData = results.map(Result);
+	tableData.sort((a, b) => {
+		if (a.non2xx !== b.non2xx) {
+			return a.non2xx - b.non2xx;
 		}
 
-		async.parallel(tasks, err => {
-			if (err) {
-				console.error(err);
-			}
-
-			return deferred.resolve();
-		});
-	},
-	teardown: function () {
-		server.removeAllListeners('request');
-	}
-});
-
-test.add('serve-files', {
-	defer: true,
-	setup: function () {
-		server.on('request', serveFiles.createFileResponseHandler({
-			documentRoot       : path.dirname(module.filename),
-			followSymbolicLinks: false,
-			cacheTimeInSeconds : 0
-		}));
-	},
-	fn: function (deferred) {
-		var tasks = [];
-
-		for (var i = files; i > 0; i--) {
-			tasks.push(fakeTask());
+		if (a.requests !== b.requests) {
+			return b.requests - a.requests;
 		}
 
-		async.parallel(tasks, err => {
-			if (err) {
-				console.error(err);
-			}
-
-			return deferred.resolve();
-		});
-	},
-	teardown: function () {
-		server.removeAllListeners('request');
-	}
-});
-
-test.on('start', function () {
-	console.log(`Test of serving ${files} files in parallel`);
-	console.log('');
-});
-
-test.on('cycle', function (event) {
-	results.add(event.target);
-});
-
-test.on('complete', function () {
-	results.store.sort((a, b) => b.hz - a.hz);
-	results.log();
-	server.close();
-});
-
-server = createTestServer(() => test.run({
-	async: false
-}));
-
-/**
- * Show info about environment and tested packages.
- *
- * @private
- */
-function logInfo () {
-	console.log(`Running on node ${process.version} with ${os.cpus()[0].model} x ${os.cpus().length}`);
-	console.log('');
-	console.log('Testing:');
-
-	var columns = columnsCreate(['name', 'version', 'homepage']);
-
-	var infoStatic = require('serve-static/package.json');
-	infoStatic.version = 'v' + infoStatic.version;
-	columnsUpdate(columns, infoStatic);
-
-	var infoStatique = require('statique/package.json');
-	infoStatique.version = 'v' + infoStatique.version;
-	columnsUpdate(columns, infoStatique);
-
-	var infoFiles = require('../package.json');
-	infoFiles.version = 'v' + infoFiles.version;
-	columnsUpdate(columns, infoFiles);
-
-	console.log('- ' + columnsText(columns, infoStatic));
-	console.log('- ' + columnsText(columns, infoStatique));
-	console.log('- ' + columnsText(columns, infoFiles));
-	console.log('');
-
-	function columnsCreate (names) {
-		return names.map(name => {
-			return {size: 0, source: name};
-		});
-	}
-
-	function columnsUpdate (columns, info) {
-		var size;
-		var col;
-		for (var i = 0; i < columns.length; i++) {
-			col = columns[i];
-			size = (info[col.source] && info[col.source].length) || 0;
-			if (info[col.source] && (size = info[col.source].length) && size > col.size) {
-				col.size = size;
-			}
-		}
-	}
-
-	function columnsText (columns, info) {
-		var result = '';
-
-		for (var i = 0; i < columns.length; i++) {
-			result += columnText(columns[i], info);
-			result += ' ';
+		if (a.latency !== b.latency) {
+			return a.latency - b.latency;
 		}
 
-		return result + ' ';
-	}
-
-	function columnText (column, info) {
-		var value = info[column.source] || '';
-		var padSize = column.size - value.length;
-		var pad = '';
-
-		if (padSize) {
-			pad += (new Array(padSize + 1)).join(' ');
-		}
-
-		return value + pad;
-	}
-}
-
-/**
- * Prepare test server
- */
-function createTestServer (callback) {
-	var server = http.createServer();
-	server.href = null;
-
-	server.listen(0, 'localhost', function () {
-		var address = this.address();
-		this.href = 'http://' + address.address + ':' + address.port;
-		callback(null, this.href);
+		return 0;
 	});
 
-	server.get = function (path, options, callback) {
-		return needle.get(this.href + '/' + path.replace(/^\//, ''), options, callback);
-	};
+	console.table(tableData);
+});
 
-	return server;
+function Result (data) {
+	if (!(this instanceof Result)) {
+		return new Result(data);
+	}
+
+	this.title = data.title;
+	this.requests = data.requests.p99_9;
+	this.latency = data.latency.p99_9;
+	this.throughput = data.throughput.p99_9;
+	this.non2xx = data.non2xx;
 }
+
+// run('serve-files-fs-cache-v2', console.log);
 
 /**
- * Fake task, that simply calls back asynchronously.
- *
- * @private
- */
-function fakeTask () {
-	return callback => server.get(filename, (err, res) => callback(err, res));
-}
+// Autocannon result:
+[ { title: 'ecstatic',
+		url: 'http://localhost:3333/index.js?foo[bar]=baz',
+		socketPath: undefined,
+		requests:
+		 { average: 5645.05,
+			 mean: 5645.05,
+			 stddev: 478.34,
+			 min: 2444,
+			 max: 6026,
+			 total: 338672,
+			 p0_001: 2445,
+			 p0_01: 2445,
+			 p0_1: 2445,
+			 p1: 2445,
+			 p2_5: 4755,
+			 p10: 5287,
+			 p25: 5691,
+			 p50: 5747,
+			 p75: 5839,
+			 p90: 5907,
+			 p97_5: 5995,
+			 p99: 6027,
+			 p99_9: 6027,
+			 p99_99: 6027,
+			 p99_999: 6027,
+			 sent: 338772 },
+		latency:
+		 { average: 17.22,
+			 mean: 17.22,
+			 stddev: 10.4,
+			 min: 4,
+			 max: 168.056342,
+			 p0_001: 4,
+			 p0_01: 5,
+			 p0_1: 10,
+			 p1: 11,
+			 p2_5: 12,
+			 p10: 13,
+			 p25: 14,
+			 p50: 15,
+			 p75: 16,
+			 p90: 18,
+			 p97_5: 57,
+			 p99: 58,
+			 p99_9: 64,
+			 p99_99: 154,
+			 p99_999: 155 },
+		throughput:
+		 { average: 24598596.27,
+			 mean: 24598596.27,
+			 stddev: 2084331.68,
+			 min: 10650952,
+			 max: 26261308,
+			 total: 1475932576,
+			 p0_001: 10657791,
+			 p0_01: 10657791,
+			 p0_1: 10657791,
+			 p1: 10657791,
+			 p2_5: 20709375,
+			 p10: 23035903,
+			 p25: 24805375,
+			 p50: 25051135,
+			 p75: 25444351,
+			 p90: 25739263,
+			 p97_5: 26132479,
+			 p99: 26263551,
+			 p99_9: 26263551,
+			 p99_99: 26263551,
+			 p99_999: 26263551 },
+		errors: 0,
+		timeouts: 0,
+		duration: 60.09,
+		start: 2019-04-14T08:54:29.272Z,
+		finish: 2019-04-14T08:55:29.358Z,
+		connections: 100,
+		pipelining: 1,
+		non2xx: 0,
+		'1xx': 0,
+		'2xx': 338672,
+		'3xx': 0,
+		'4xx': 0,
+		'5xx': 0 },
+	{ title: 'node-static',
+		url: 'http://localhost:3333/index.js?foo[bar]=baz',
+		socketPath: undefined,
+		requests:
+		 { average: 5713.45,
+			 mean: 5713.45,
+			 stddev: 490.06,
+			 min: 2701,
+			 max: 6208,
+			 total: 342778,
+			 p0_001: 2701,
+			 p0_01: 2701,
+			 p0_1: 2701,
+			 p1: 2701,
+			 p2_5: 4787,
+			 p10: 4991,
+			 p25: 5747,
+			 p50: 5831,
+			 p75: 5923,
+			 p90: 5999,
+			 p97_5: 6043,
+			 p99: 6211,
+			 p99_9: 6211,
+			 p99_99: 6211,
+			 p99_999: 6211,
+			 sent: 342878 },
+		latency:
+		 { average: 17.01,
+			 mean: 17.01,
+			 stddev: 10.23,
+			 min: 4,
+			 max: 150.04656,
+			 p0_001: 4,
+			 p0_01: 6,
+			 p0_1: 11,
+			 p1: 12,
+			 p2_5: 12,
+			 p10: 13,
+			 p25: 14,
+			 p50: 14,
+			 p75: 15,
+			 p90: 18,
+			 p97_5: 56,
+			 p99: 58,
+			 p99_9: 65,
+			 p99_99: 117,
+			 p99_999: 132 },
+		throughput:
+		 { average: 24839577.6,
+			 mean: 24839577.6,
+			 stddev: 2131506.2,
+			 min: 11743948,
+			 max: 26992384,
+			 total: 1490398744,
+			 p0_001: 11747327,
+			 p0_01: 11747327,
+			 p0_1: 11747327,
+			 p1: 11747327,
+			 p2_5: 20807679,
+			 p10: 21692415,
+			 p25: 24985599,
+			 p50: 25362431,
+			 p75: 25755647,
+			 p90: 26099711,
+			 p97_5: 26279935,
+			 p99: 27000831,
+			 p99_9: 27000831,
+			 p99_99: 27000831,
+			 p99_999: 27000831 },
+		errors: 0,
+		timeouts: 0,
+		duration: 60.04,
+		start: 2019-04-14T08:55:29.473Z,
+		finish: 2019-04-14T08:56:29.515Z,
+		connections: 100,
+		pipelining: 1,
+		non2xx: 0,
+		'1xx': 0,
+		'2xx': 342778,
+		'3xx': 0,
+		'4xx': 0,
+		'5xx': 0 },
+	{ title: 'serve-files',
+		url: 'http://localhost:3333/index.js?foo[bar]=baz',
+		socketPath: undefined,
+		requests:
+		 { average: 5747.59,
+			 mean: 5747.59,
+			 stddev: 491.3,
+			 min: 2664,
+			 max: 6117,
+			 total: 344822,
+			 p0_001: 2665,
+			 p0_01: 2665,
+			 p0_1: 2665,
+			 p1: 2665,
+			 p2_5: 4715,
+			 p10: 5175,
+			 p25: 5791,
+			 p50: 5871,
+			 p75: 5955,
+			 p90: 6011,
+			 p97_5: 6099,
+			 p99: 6119,
+			 p99_9: 6119,
+			 p99_99: 6119,
+			 p99_999: 6119,
+			 sent: 344922 },
+		latency:
+		 { average: 16.91,
+			 mean: 16.91,
+			 stddev: 10.28,
+			 min: 6,
+			 max: 128.148614,
+			 p0_001: 6,
+			 p0_01: 8,
+			 p0_1: 10,
+			 p1: 11,
+			 p2_5: 12,
+			 p10: 13,
+			 p25: 13,
+			 p50: 14,
+			 p75: 15,
+			 p90: 18,
+			 p97_5: 56,
+			 p99: 58,
+			 p99_9: 65,
+			 p99_99: 126,
+			 p99_999: 127 },
+		throughput:
+		 { average: 25063355.74,
+			 mean: 25063355.74,
+			 stddev: 2142483.34,
+			 min: 11617704,
+			 max: 26676237,
+			 total: 1503768742,
+			 p0_001: 11624447,
+			 p0_01: 11624447,
+			 p0_1: 11624447,
+			 p1: 11624447,
+			 p2_5: 20561919,
+			 p10: 22560767,
+			 p25: 25247743,
+			 p50: 25608191,
+			 p75: 25985023,
+			 p90: 26214399,
+			 p97_5: 26591231,
+			 p99: 26689535,
+			 p99_9: 26689535,
+			 p99_99: 26689535,
+			 p99_999: 26689535 },
+		errors: 0,
+		timeouts: 0,
+		duration: 60.06,
+		start: 2019-04-14T08:56:29.629Z,
+		finish: 2019-04-14T08:57:29.686Z,
+		connections: 100,
+		pipelining: 1,
+		non2xx: 0,
+		'1xx': 0,
+		'2xx': 344822,
+		'3xx': 0,
+		'4xx': 0,
+		'5xx': 0 },
+	{ title: 'serve-files-fs-cache',
+		url: 'http://localhost:3333/index.js?foo[bar]=baz',
+		socketPath: undefined,
+		requests:
+		 { average: 7918.92,
+			 mean: 7918.92,
+			 stddev: 708.42,
+			 min: 3421,
+			 max: 8488,
+			 total: 475106,
+			 p0_001: 3421,
+			 p0_01: 3421,
+			 p0_1: 3421,
+			 p1: 3421,
+			 p2_5: 6379,
+			 p10: 7455,
+			 p25: 7867,
+			 p50: 8067,
+			 p75: 8255,
+			 p90: 8407,
+			 p97_5: 8479,
+			 p99: 8495,
+			 p99_9: 8495,
+			 p99_99: 8495,
+			 p99_999: 8495,
+			 sent: 475206 },
+		latency:
+		 { average: 12.13,
+			 mean: 12.13,
+			 stddev: 10.19,
+			 min: 0,
+			 max: 136.157428,
+			 p0_001: 1,
+			 p0_01: 2,
+			 p0_1: 5,
+			 p1: 6,
+			 p2_5: 7,
+			 p10: 8,
+			 p25: 8,
+			 p50: 10,
+			 p75: 11,
+			 p90: 13,
+			 p97_5: 52,
+			 p99: 53,
+			 p99_9: 58,
+			 p99_99: 118,
+			 p99_999: 120 },
+		throughput:
+		 { average: 34532625.07,
+			 mean: 34532625.07,
+			 stddev: 3088816.8,
+			 min: 14918981,
+			 max: 37016168,
+			 total: 2071937266,
+			 p0_001: 14925823,
+			 p0_01: 14925823,
+			 p0_1: 14925823,
+			 p1: 14925823,
+			 p2_5: 27820031,
+			 p10: 32522239,
+			 p25: 34308095,
+			 p50: 35192831,
+			 p75: 36012031,
+			 p90: 36667391,
+			 p97_5: 36995071,
+			 p99: 37027839,
+			 p99_9: 37027839,
+			 p99_99: 37027839,
+			 p99_999: 37027839 },
+		errors: 0,
+		timeouts: 0,
+		duration: 60.04,
+		start: 2019-04-14T08:57:29.828Z,
+		finish: 2019-04-14T08:58:29.863Z,
+		connections: 100,
+		pipelining: 1,
+		non2xx: 0,
+		'1xx': 0,
+		'2xx': 475106,
+		'3xx': 0,
+		'4xx': 0,
+		'5xx': 0 },
+	{ title: 'serve-files-fs-cache-v2',
+		url: 'http://localhost:3333/index.js?foo[bar]=baz',
+		socketPath: undefined,
+		requests:
+		 { average: 1.67,
+			 mean: 1.67,
+			 stddev: 12.81,
+			 min: 100,
+			 max: 100,
+			 total: 100,
+			 p0_001: 0,
+			 p0_01: 0,
+			 p0_1: 0,
+			 p1: 0,
+			 p2_5: 0,
+			 p10: 0,
+			 p25: 0,
+			 p50: 0,
+			 p75: 0,
+			 p90: 0,
+			 p97_5: 0,
+			 p99: 100,
+			 p99_9: 100,
+			 p99_99: 100,
+			 p99_999: 100,
+			 sent: 623389 },
+		latency:
+		 { average: 78.69,
+			 mean: 78.69,
+			 stddev: 1.43,
+			 min: 76,
+			 max: 82.463697,
+			 p0_001: 76,
+			 p0_01: 76,
+			 p0_1: 76,
+			 p1: 76,
+			 p2_5: 77,
+			 p10: 77,
+			 p25: 78,
+			 p50: 79,
+			 p75: 79,
+			 p90: 81,
+			 p97_5: 82,
+			 p99: 82,
+			 p99_9: 82,
+			 p99_99: 82,
+			 p99_999: 82 },
+		throughput:
+		 { average: 7268.27,
+			 mean: 7268.27,
+			 stddev: 55828.62,
+			 min: 436100,
+			 max: 436100,
+			 total: 436100,
+			 p0_001: 0,
+			 p0_01: 0,
+			 p0_1: 0,
+			 p1: 0,
+			 p2_5: 0,
+			 p10: 0,
+			 p25: 0,
+			 p50: 0,
+			 p75: 0,
+			 p90: 0,
+			 p97_5: 0,
+			 p99: 436223,
+			 p99_9: 436223,
+			 p99_99: 436223,
+			 p99_999: 436223 },
+		errors: 623189,
+		timeouts: 0,
+		duration: 60.15,
+		start: 2019-04-14T08:58:29.976Z,
+		finish: 2019-04-14T08:59:30.122Z,
+		connections: 100,
+		pipelining: 1,
+		non2xx: 0,
+		'1xx': 0,
+		'2xx': 100,
+		'3xx': 0,
+		'4xx': 0,
+		'5xx': 0 },
+	{ title: 'serve-static',
+		url: 'http://localhost:3333/index.js?foo[bar]=baz',
+		socketPath: undefined,
+		requests:
+		 { average: 5529.52,
+			 mean: 5529.52,
+			 stddev: 472.38,
+			 min: 2460,
+			 max: 5857,
+			 total: 331758,
+			 p0_001: 2461,
+			 p0_01: 2461,
+			 p0_1: 2461,
+			 p1: 2461,
+			 p2_5: 4759,
+			 p10: 5143,
+			 p25: 5535,
+			 p50: 5615,
+			 p75: 5755,
+			 p90: 5799,
+			 p97_5: 5855,
+			 p99: 5859,
+			 p99_9: 5859,
+			 p99_99: 5859,
+			 p99_999: 5859,
+			 sent: 331858 },
+		latency:
+		 { average: 17.59,
+			 mean: 17.59,
+			 stddev: 10.25,
+			 min: 5,
+			 max: 128.32794,
+			 p0_001: 5,
+			 p0_01: 11,
+			 p0_1: 12,
+			 p1: 13,
+			 p2_5: 13,
+			 p10: 14,
+			 p25: 14,
+			 p50: 15,
+			 p75: 16,
+			 p90: 18,
+			 p97_5: 57,
+			 p99: 59,
+			 p99_9: 66,
+			 p99_99: 100,
+			 p99_999: 119 },
+		throughput:
+		 { average: 23930811.74,
+			 mean: 23930811.74,
+			 stddev: 2044040.74,
+			 min: 10646880,
+			 max: 25349096,
+			 total: 1435848624,
+			 p0_001: 10649599,
+			 p0_01: 10649599,
+			 p0_1: 10649599,
+			 p1: 10649599,
+			 p2_5: 20594687,
+			 p10: 22265855,
+			 p25: 23969791,
+			 p50: 24297471,
+			 p75: 24903679,
+			 p90: 25100287,
+			 p97_5: 25346047,
+			 p99: 25362431,
+			 p99_9: 25362431,
+			 p99_99: 25362431,
+			 p99_999: 25362431 },
+		errors: 0,
+		timeouts: 0,
+		duration: 60.03,
+		start: 2019-04-14T08:59:30.256Z,
+		finish: 2019-04-14T09:00:30.287Z,
+		connections: 100,
+		pipelining: 1,
+		non2xx: 0,
+		'1xx': 0,
+		'2xx': 331758,
+		'3xx': 0,
+		'4xx': 0,
+		'5xx': 0 },
+	{ title: 'st',
+		url: 'http://localhost:3333/index.js?foo[bar]=baz',
+		socketPath: undefined,
+		requests:
+		 { average: 9204.71,
+			 mean: 9204.71,
+			 stddev: 863.51,
+			 min: 4290,
+			 max: 10135,
+			 total: 552301,
+			 p0_001: 4291,
+			 p0_01: 4291,
+			 p0_1: 4291,
+			 p1: 4291,
+			 p2_5: 7471,
+			 p10: 8399,
+			 p25: 9023,
+			 p50: 9383,
+			 p75: 9671,
+			 p90: 9887,
+			 p97_5: 10111,
+			 p99: 10135,
+			 p99_9: 10135,
+			 p99_99: 10135,
+			 p99_999: 10135,
+			 sent: 552401 },
+		latency:
+		 { average: 10.41,
+			 mean: 10.41,
+			 stddev: 10.08,
+			 min: 3,
+			 max: 101.243979,
+			 p0_001: 3,
+			 p0_01: 4,
+			 p0_1: 6,
+			 p1: 6,
+			 p2_5: 7,
+			 p10: 7,
+			 p25: 7,
+			 p50: 7,
+			 p75: 9,
+			 p90: 11,
+			 p97_5: 50,
+			 p99: 52,
+			 p99_9: 56,
+			 p99_99: 77,
+			 p99_999: 87 },
+		throughput:
+		 { average: 40824012.8,
+			 mean: 40824012.8,
+			 stddev: 3827909.92,
+			 min: 19026150,
+			 max: 44948725,
+			 total: 2449454935,
+			 p0_001: 19038207,
+			 p0_01: 19038207,
+			 p0_1: 19038207,
+			 p1: 19038207,
+			 p2_5: 33144831,
+			 p10: 37257215,
+			 p25: 40009727,
+			 p50: 41615359,
+			 p75: 42893311,
+			 p90: 43843583,
+			 p97_5: 44826623,
+			 p99: 44957695,
+			 p99_9: 44957695,
+			 p99_99: 44957695,
+			 p99_999: 44957695 },
+		errors: 0,
+		timeouts: 0,
+		duration: 60.04,
+		start: 2019-04-14T09:00:30.471Z,
+		finish: 2019-04-14T09:01:30.514Z,
+		connections: 100,
+		pipelining: 1,
+		non2xx: 0,
+		'1xx': 0,
+		'2xx': 552301,
+		'3xx': 0,
+		'4xx': 0,
+		'5xx': 0 },
+	{ title: 'statique',
+		url: 'http://localhost:3333/index.js?foo[bar]=baz',
+		socketPath: undefined,
+		requests:
+		 { average: 3996.15,
+			 mean: 3996.15,
+			 stddev: 326.49,
+			 min: 1976,
+			 max: 4283,
+			 total: 239736,
+			 p0_001: 1976,
+			 p0_01: 1976,
+			 p0_1: 1976,
+			 p1: 1976,
+			 p2_5: 3137,
+			 p10: 3697,
+			 p25: 4019,
+			 p50: 4067,
+			 p75: 4127,
+			 p90: 4167,
+			 p97_5: 4211,
+			 p99: 4283,
+			 p99_9: 4283,
+			 p99_99: 4283,
+			 p99_999: 4283,
+			 sent: 239836 },
+		latency:
+		 { average: 24.52,
+			 mean: 24.52,
+			 stddev: 10.78,
+			 min: 2,
+			 max: 116.551384,
+			 p0_001: 2,
+			 p0_01: 2,
+			 p0_1: 14,
+			 p1: 17,
+			 p2_5: 18,
+			 p10: 19,
+			 p25: 20,
+			 p50: 21,
+			 p75: 24,
+			 p90: 30,
+			 p97_5: 64,
+			 p99: 67,
+			 p99_9: 81,
+			 p99_99: 103,
+			 p99_999: 104 },
+		throughput:
+		 { average: 17352567.47,
+			 mean: 17352567.47,
+			 stddev: 1417434.1,
+			 min: 8581768,
+			 max: 18601069,
+			 total: 1041173448,
+			 p0_001: 8585215,
+			 p0_01: 8585215,
+			 p0_1: 8585215,
+			 p1: 8585215,
+			 p2_5: 13631487,
+			 p10: 16056319,
+			 p25: 17465343,
+			 p50: 17661951,
+			 p75: 17924095,
+			 p90: 18087935,
+			 p97_5: 18300927,
+			 p99: 18612223,
+			 p99_9: 18612223,
+			 p99_99: 18612223,
+			 p99_999: 18612223 },
+		errors: 0,
+		timeouts: 0,
+		duration: 60.03,
+		start: 2019-04-14T09:01:30.658Z,
+		finish: 2019-04-14T09:02:30.691Z,
+		connections: 100,
+		pipelining: 1,
+		non2xx: 0,
+		'1xx': 0,
+		'2xx': 239736,
+		'3xx': 0,
+		'4xx': 0,
+		'5xx': 0 } ]
+**/
