@@ -5,7 +5,7 @@ Provides a way to serve static files without a need for any framework.
 
 It is somewhere in between [`serve-static`](https://github.com/expressjs/serve-static) and [`statique`](https://github.com/IonicaBizau/statique):
 
-- it provides a simple function call, 100% compatible with native node "request" event handlers,
+- it provides a simple function call, 100% compatible with native node's "request" event handlers,
 - it is easy to use with other frameworks, like [`web-pockets`](https://github.com/grncdr/web-pockets),
 - it allows to build own file request handlers on top of its exported functions,
 - it supports bytes range requests (e.g., media streaming),
@@ -54,9 +54,9 @@ const serveFiles = require('serve-files');
 
 // Create file response handler
 const fileResponse = serveFiles.createFileResponseHandler({
-  followSymbolicLinks: false,
-  cacheTimeInSeconds : 3600,
-  documentRoot       : process.cwd()
+	followSymbolicLinks: false,
+	cacheTimeInSeconds : 3600,
+	documentRoot       : process.cwd()
 });
 
 // Create server
@@ -71,72 +71,67 @@ const path = require('path');
 const app = require('web-pockets')();
 const serveFiles = require('serve-files');
 
-// Create file response handler
-const cfg = serveFiles.createConfiguration({
-  followSymbolicLinks: false,
-  cacheTimeInSeconds : 3600,
-  documentRoot       : process.cwd()
-});
-
 http.createServer(app).listen(8080, 'localhost');
 
-app.request.nodeValue('filePath', function (parsedUrl, callback) {
-  callback(null, path.join(cfg.documentRoot, (parsedUrl.pathname || '/')));
+app.nodeValue('cfg', function () {
+	return serveFiles.createConfiguration({
+		followSymbolicLinks: false,
+		cacheTimeInSeconds : 3600,
+		documentRoot       : process.cwd()
+	});
 });
 
-app.request.nodeValue('fileResponse', function (filePath, request, callback) {
-  serveFiles.prepareFileResponse(cfg, filePath, request.headers, callback);
+app.request.nodeValue('filePath', function (cfg, parsedUrl, callback) {
+	// We can do some additional "redirects" at file path level
+	callback(null, path.join(cfg.documentRoot, (parsedUrl.pathname || '/')));
 });
 
-app.route('GET *', function (fileResponse) {
-  // Make sure that there is a `body`, or web-pockets will serve fileResponse as JSON object.
-  if (!fileResponse.body) {
-    fileResponse.body = '';
-  }
+app.request.nodeValue('fileStats', function (cfg, filePath, callback) {
+	// We can add some file cache at fileStats level
+	cfg.getFileInfo(cfg, filePath, function (filePath, fileStats) {
+		return !fileStats || fileStats instanceof Error ? callback(fileStats) : callback(null, fileStats);
+	});
+});
 
-  // Workaround web-pockets bug
-  fileResponse.headers['content-type'] = fileResponse.headers['Content-Type'];
-  delete fileResponse.headers['Content-Type'];
+app.request.nodeValue('fileResponse', function (cfg, filePath, fileStats, request, response, callback) {
+	// and/or add cache at file data level
+	callback(null, cfg.prepareResponseData(cfg, request, response, filePath, fileStats));
+});
 
-  return fileResponse;
+app.route('GET *', function (fileResponse, response) {
+	return {
+		// Make sure that there is a `body`, or web-pockets will serve fileResponse as JSON object.
+		body      : fileResponse || '',
+		// Make sure we pass statusCode, or web-pockets will assume some default.
+		statusCode: response.statusCode,
+		// Make sure we pass content-type (using small-caps), or web-pockets will assume default.
+		headers   : {
+			'content-type': response.getHeader('content-type')
+		}
+	};
 });
 ```
 
 
 ## Benchmarks
 
-These benchmarks are just to make sure that working with `serve-files` is not slower than working with other, similar modules.
+These benchmarks are just to make sure that `serve-files` speed is comparable (so not much slower at least ;) with other, similar modules.
 You can re-run benchmarks locally with: `npm run benchmarks`.
 
-```markdown
-Running on node v7.3.0 with Intel(R) Core(TM) i7-3537U CPU @ 2.00GHz x 4
+```
+Running inside Docker (Alpine Linux v3.10) with Node v12.11.0 and Intel(R) Core(TM) i7-3537U CPU @ 2.00GHz x 2.
+Testing 7 servers, with 60s of 100 simultaneous connections each.
+Test will take approximately 7 minute(s).
 
-Testing:
-- serve-static v1.11.1 https://github.com/expressjs/serve-static#readme  
-- statique     v3.2.6  https://github.com/IonicaBizau/statique           
-- serve-files  v1.0.0  https://github.com/ahwayakchih/serve-files        
-
-Test of serving 1 files in parallel
-
-  3 tests completed.
-
-  statique     x 1,062 ops/sec ±3.09% (76 runs sampled)
-  serve-static x   995 ops/sec ±5.27% (76 runs sampled)
-  serve-files  x   874 ops/sec ±2.82% (73 runs sampled)
-
-Test of serving 5 files in parallel
-
-  3 tests completed.
-
-  statique     x 258 ops/sec ±2.90% (79 runs sampled)
-  serve-files  x 256 ops/sec ±2.81% (78 runs sampled)
-  serve-static x 236 ops/sec ±6.13% (76 runs sampled)
-
-Test of serving 10 files in parallel
-
-  3 tests completed.
-
-  statique     x 132 ops/sec ±3.98% (77 runs sampled)
-  serve-files  x 131 ops/sec ±2.94% (77 runs sampled)
-  serve-static x 114 ops/sec ±14.48% (73 runs sampled)
+┌─────────┬───────────────────────────┬──────────┬─────────┬────────────┬────────┐
+│ (index) │           title           │ requests │ latency │ throughput │ non2xx │
+├─────────┼───────────────────────────┼──────────┼─────────┼────────────┼────────┤
+│    0    │           'st'            │   8983   │   59    │ 132907007  │   0    │
+│    1    │ 'serve-files-fs-cache-v2' │   8055   │   36    │ 118620159  │   0    │
+│    2    │  'serve-files-fs-cache'   │   7183   │   60    │ 105775103  │   0    │
+│    3    │       'node-static'       │   6647   │   80    │  97779711  │   0    │
+│    4    │       'serve-files'       │   6519   │   64    │  96010239  │   0    │
+│    5    │      'serve-static'       │   6275   │   64    │  92209151  │   0    │
+│    6    │        'statique'         │   4155   │   82    │  61145087  │   0    │
+└─────────┴───────────────────────────┴──────────┴─────────┴────────────┴────────┘
 ```

@@ -1,84 +1,74 @@
 #!/usr/bin/env node
 
-const fs         = require('fs');
-const http       = require('http');
-const path       = require('path');
-const serveFiles = require('../index.js');
+const http        = require('http');
+const path        = require('path');
+const serveFiles  = require('../index.js');
+const connections = require('../lib/getSetOfSockets.js')();
 
-if (!process.argv[2]) {
-	console.log(`USAGE: node ${path.basename(module.filename)} [root_directory] [host_name[:port_number]] [port_number]\n`);
-	process.exit(0);
+const CONFIG = serveFiles.parseArguments(process.argv);
+const CACHE_TIME = 3600;
+
+if (CONFIG.usageText !== null) {
+	console.log(`USAGE: ${path.basename(module.filename)} ${CONFIG.usageText}\n`);
+	process.exit(0); // eslint-disable-line no-process-exit
 }
 
-var root = process.cwd();
-var port = 0;
-var host = null;
-
-(function () {
-	var value = false;
-	var stats = false;
-	for (var i = 2; i < process.argv.length; i++) {
-		value = process.argv[i];
-		if (value.match(/^\d+$/)) {
-			port = value;
-		}
-		else if (value.indexOf(path.sep) !== -1 || value.match(/^\./)) {
-			root = value;
-		}
-		else if (value === 'localhost' || (stats = value.match(/^(\d+\.\d+\.\d+\.\d+)(:\d+|)$/))) {
-			host = stats[1];
-			if (stats[2]) {
-				port = stats[2].substring(1);
-			}
-		}
-		else {
-			try {
-				stats = fs.statSync(value);
-				if (!stats || !stats.isDirectory()) {
-					host = value;
-				}
-				else {
-					root = value;
-				}
-			}
-			catch (e) {
-				host = value;
-			}
-		}
-	}
-})();
-
 const server = http.createServer(serveFiles.createFileResponseHandler({
-	documentRoot       : root,
+	documentRoot       : CONFIG.documentRoot,
 	followSymbolicLinks: false,
-	cacheTimeInSeconds : 3600
+	cacheTimeInSeconds : CACHE_TIME
 }));
 
-server.listen(port, host, null, function () {
-	const address = this.address();
-	console.log(`Server is serving files from ${root} waiting for connections on http://` + (host || 'localhost') + `:${address.port}/ - have fun!`);
-});
+server.listen(CONFIG.port, CONFIG.hostname, null, onServerListening);
 
 // Keep track of connections, to enforce killing them when server must be stopped.
-const connections = {};
-server.on('connection', function (socket) {
-	socket._cid = process.hrtime();
-	connections[socket._cid] = socket;
+server.on('connection', connections.onNewConnection);
 
-	socket.on('end', function () {
-		delete connections[this._cid];
+[
+	'SIGHUP',
+	'SIGINT',
+	'SIGQUIT',
+	'SIGILL',
+	'SIGTRAP',
+	'SIGABRT',
+	'SIGBUS',
+	'SIGFPE',
+	'SIGUSR1',
+	'SIGSEGV',
+	'SIGUSR2',
+	'SIGTERM'
+].forEach(signal => process.once(signal, onServerSignal));
+
+/**
+ * Net server
+ *
+ * @typedef external:net.Server
+ * @see {@link https://nodejs.org/api/net.html#net_class_net_server}
+ */
+
+/**
+ * Output some info about server that's listening.
+ *
+ * @private
+ * @this external:net.Server
+ */
+function onServerListening () {
+	const address = this.address();
+	console.log(`Server is serving files from ${path.resolve(CONFIG.documentRoot)} waiting for connections on http://${CONFIG.hostname || 'localhost'}:${address.port}/ - have fun!`);
+}
+
+/**
+ * Quickly stop server on signal.
+ *
+ * @private
+ * @param {string} signal
+ */
+function onServerSignal (signal) {
+	console.log(`Got ${signal}, stopping server...`);
+	server.close(() => {
+		console.log('Server stopped. Bye!');
+		process.exit(0); // eslint-disable-line no-process-exit
 	});
-});
 
-['SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGILL', 'SIGTRAP', 'SIGABRT',
- 'SIGBUS', 'SIGFPE', 'SIGUSR1', 'SIGSEGV', 'SIGUSR2', 'SIGTERM'].forEach(signal => {
-	process.once(signal, () => {
-		console.log(`Got ${signal}, stopping server...`);
-		server.close(() => {
-			console.log(`Server stopped. Bye!`);
-			process.exit(0);
-		});
-
-		Object.keys(connections).forEach(cid => connections[cid].destroy());
-	});
-});
+	connections.closeAll();
+}

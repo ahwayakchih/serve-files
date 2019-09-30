@@ -2,11 +2,12 @@
 'use strict';
 
 const path = require('path');
-const url = require('url');
 const fs = require('fs');
 const os = require('os');
 
 const mime = require('./lib/MIME.js');
+const parseArguments = require('./lib/getOptionsFromArgv.js');
+const getRealpath = require('./lib/fastRealpath.js');
 
 /**
  * @module serve-files
@@ -15,69 +16,95 @@ const mime = require('./lib/MIME.js');
 /**
  * List of HTTP status codes used by this module.
  */
-/* eslint-disable */
+/* eslint-disable no-magic-numbers */
 const HTTP_CODES = {
 	OK          : 200,
 	OK_RANGE    : 206,
 	NOT_MODIFIED: 304,
+	DENIED      : 403,
 	NOT_FOUND   : 404,
 	WAS_MODIFIED: 412,
 	NOT_IN_RANGE: 416,
 	SERVER_ERROR: 500
 };
-/* eslint-enable */
+/* eslint-enable no-magic-numbers */
+
+/**
+ * Windows requires some trick when getting realpath, so check if we're running on it.
+ */
+const IS_WINDOWS = os.platform() === 'win32';
+
+/**
+ * Configuration object.
+ *
+ * @typedef {object} Configuration
+ * @property {Map|boolean} cacheOfFileStats=true        can be a Map (or Map-like object) or `true` (in which case it will be replaced with `new Map()`)
+ * @property {boolean}     followSymbolicLinks=false    symbolic links will not be followed by default, i.e., they will not be served
+ * @property {number}      cacheTimeInSeconds=0         HTTP cache will be disabled by default
+ * @property {string}      documentRoot=process.cwd()   files outside of root path will not be served
+ * @property {Function}    getFilePath
+ * @property {Function}    getFileInfo
+ * @property {Function}    getFileStream
+ * @property {Function}    prepareResponseData
+ * @property {Function}    appendCacheHeaders
+ * @property {Function}    serveFileResponse
+ * @property {Function}    sendResponseData
+ */
+
+/**
+ * @type {Configuration}
+ */
+const DEFAULT_CONFIG = {
+	followSymbolicLinks: false,
+	cacheTimeInSeconds : 0,
+	documentRoot       : process.cwd(),
+	documentRootReal   : null,
+	getFilePath,
+	getFileInfo,
+	getFileStream,
+	prepareResponseData,
+	appendCacheHeaders,
+	serveFileResponse,
+	sendResponseData
+};
 
 /*
  * Exports
  */
 module.exports = {
 	HTTP_CODES,
+	DEFAULT_CONFIG,
 	createFileResponseHandler,
 	createConfiguration,
 	getFilePath,
-	getFileStats,
-	getResponseData,
-	getResponseDataRanges,
-	getResponseDataWhole,
+	getFileInfo,
+	getFileStream,
+	prepareResponseData,
+	prepareResponseDataRanges,
+	prepareResponseDataWhole,
 	appendCacheHeaders,
-	prepareFileResponse,
-	serveFileResponse
+	serveFileResponse,
+	sendResponseData,
+	parseArguments,
+	getRealpath
 };
 
 /**
- * Configuration object.
- *
- * @typedef {Object} configuration
- * @property {boolean}    followSymbolicLinks=false
- * @property {number}     cacheTimeInSeconds=0
- * @property {string}     documentRoot=process.cwd()
- * @property {string}     parsedURLName='urlParsed'
- * @property {Function}   getFilePath
- * @property {Function}   getFileStats
- * @property {Function}   getResponseData
- * @property {Function[]} standardResponses=null
+ * @private
  */
+const ONE_SECOND_IN_MILLISECONDS = 1000;
 
 /**
  * Prepare configuration object.
  *
- * @param {Object} options   Check properties of {@link module:serve-files~configuration}
- * @return {module:serve-files~configuration}
+ * @param {object} options   See properties of {@link module:serve-files~Configuration}
+ * @return {module:serve-files~Configuration} Configuration
  */
 function createConfiguration (options) {
-	const cfg = Object.assign({
-		followSymbolicLinks: false,
-		cacheTimeInSeconds : 0,
-		documentRoot       : process.cwd(),
-		parsedURLName      : 'urlParsed',
-		getFilePath        : getFilePath,
-		getFileStats       : getFileStats,
-		getResponseData    : getResponseData,
-		standardResponses  : null
-	}, options);
+	const cfg = Object.assign(Object.create(DEFAULT_CONFIG), options);
 
 	try {
-		let root = fs.realpathSync(cfg.documentRoot);
+		const root = fs.realpathSync(cfg.documentRoot);
 		cfg.documentRootReal = root;
 	}
 	catch (e) {
@@ -88,303 +115,341 @@ function createConfiguration (options) {
 }
 
 /**
+ * HTTP
+ *
+ * @external http
+ * @see {@link https://nodejs.org/api/http.html#http_class_http_incomingmessage}
+ */
+
+/**
  * HTTP request
  *
- * @external "http.IncomingMessage"
- * @see {@link https://nodejs.org/api/http.html#http_http_incomingmessage}
+ * @typedef external:http.IncomingMessage
+ * @see {@link https://nodejs.org/api/http.html#http_class_http_incomingmessage}
  */
+
+/**
+ * HTTP response
+ *
+ * @typedef external:http.ServerResponse
+ * @see {@link https://nodejs.org/api/http.html#http_class_http_serverresponse}
+ */
+
+/**
+ * @private
+ */
+const URL_PATHNAME_REGEXP = /^[^?#]+/;
+
+/**
+ * @private
+ * @param {error|object} error
+ * @param {number}       [statusCode=HTTP_CODES.SERVER_ERROR]
+ * @return {object}
+ */
+function errorWithStatusCode (error, statusCode) {
+	error.statusCode = statusCode || HTTP_CODES.SERVER_ERROR;
+	return error;
+}
 
 /**
  * Returns requested file path.
  *
- * @param {!module:serve-files~configuration} cfg
- * @param {!external:"http.IncomingMessage"}  req
+ * @param {!module:serve-files~Configuration} cfg
+ * @param {!external:http.IncomingMessage}  req
+ * @return {string}
  */
 function getFilePath (cfg, req) {
-	const urlParsed = req[cfg.parsedURLName] || url.parse(req.url);
-	return path.join(cfg.documentRoot, (urlParsed.pathname || '/'));
+	return path.join(cfg.documentRoot, URL_PATHNAME_REGEXP.exec(req.url)[0] || '/');
 }
 
 /**
- * Calls back with error or null and fs.Stats object as second parameter.
- * fs.Stats object is extended with `path` property.
+ * Calls back with filePath and fs.Stats object or error as a second argument.
  *
- * @param {!module:serve-files~configuration} cfg
+ * @param {!module:serve-files~Configuration} cfg
  * @param {!string}                           cfg.documentRootReal
  * @param {string}                            [cfg.followSymbolicLinks=false]
+ * @param {!external:http.IncomingMessage}    req
+ * @param {!external:http.ServerResponse}     res
  * @param {!string}                           filePath
- * @param {@Function}                         callback
+ * @param {!Function}                         callback
  */
-function getFileStats (cfg, filePath, callback) {
-	fs.realpath(filePath, function (err, realpath) {
+function getFileInfo (cfg, req, res, filePath, callback) {
+	getRealpath(filePath, function onRealpath (err, realpath) {
 		// On Windows we can get different cases for the same disk letter :/.
 		let checkPath = realpath;
-		if (os.platform() === 'win32' && realpath) {
+		if (realpath && IS_WINDOWS) {
 			checkPath = realpath.toLowerCase();
 		}
 
 		if (err || checkPath.indexOf(cfg.documentRootReal) !== 0) {
-			return callback(err || new Error('Access denied'));
+			callback(cfg, req, res, filePath, err || errorWithStatusCode(new Error('Access denied'), HTTP_CODES.DENIED));
+			return;
 		}
 
-		fs[cfg.followSymbolicLinks ? 'stat' : 'lstat'](filePath, function (err, stats) {
-			if (err || !stats.isFile()) {
-				return callback(err || new Error('Access denied'));
+		fs[cfg.followSymbolicLinks ? 'stat' : 'lstat'](filePath, function onStat (err2, fileStats) {
+			if (err2 || !fileStats.isFile()) {
+				callback(cfg, req, res, filePath, err2 || errorWithStatusCode(new Error('Access denied'), HTTP_CODES.DENIED));
+				return;
 			}
 
-			stats.path = realpath;
-
-			callback(null, stats);
+			callback(cfg, req, res, filePath, fileStats);
 		});
 	});
 }
 
 /**
+ * File system module
+ *
+ * @external fs
+ * @see {@link https://nodejs.org/api/fs.html}
+ */
+
+/**
  * File stats
  *
- * @external "fs.Stats"
+ * @typedef external:fs.Stats
  * @see {@link https://nodejs.org/api/fs.html#fs_class_fs_stats}
  */
 
 /**
- * Readable stream
+ * File read stream
  *
- * @external "stream.Readable"
- * @see {@link https://nodejs.org/api/stream.html#stream_class_stream_readable}
+ * @typedef external:fs.ReadStream
+ * @see {@link https://nodejs.org/api/fs.html#fs_class_fs_readstream}
  */
 
 /**
- * Response data
- *
- * @typedef {Object} responseData
- * @property {number}                            statusCode
- * @property {string|external:"stream.Readable"} [body]
- * @property {Object}                            [headers]
+ * @param {!module:serve-files~Configuration} cfg
+ * @param {!external:http.IncomingMessage}    req
+ * @param {!external:http.ServerResponse}     res
+ * @param {!string}                           filePath
+ * @param {!external:fs.Stats}                fileStats
+ * @param {object}                            [options]
+ * @return {external:fs.ReadStream}
  */
-
-/**
- * Creates responseData object.
- *
- * It takes into account `If-Modified-Since` and `If-Unmodified-Since` request headers. When one of them
- * matches, no body will be set on resulting responseData, just a statusCode and required headers (if any).
- *
- * It calls either `getResponseDataRanges` or `getResponseDataWhole` depending on request `Range` header.
- *
- * @param {!external:"fs.Stats"} fileStats
- * @param {!string}              fileStats.path                  path to the file in local filesystem
- * @param {!Date}                fileStats.mtime                 date of last modification of file content
- * @param {!Number}              fileStats.size                  number of bytes of data file contains
- * @param {!Object}              headers                         headers from request object (@see {@link http.IncomingMessage})
- * @param {string}               [headers.if-modified-since]
- * @param {string}               [headers.if-unmodified-since]
- * @param {string}               [headers.if-range]
- * @param {string}               [headers.range]
- * @return {module:serve-files~responseData}
- */
-function getResponseData (fileStats, headers) {
-	var mtimeRounded = Math.round(fileStats.mtime / 1000);
-
-	// Remove milliseconds and round because date from HTTP header does not contain milliseconds, but mtime does.
-	if (headers['if-modified-since'] && mtimeRounded <= Math.round(new Date(headers['if-modified-since']) / 1000)) {
-		return {
-			statusCode: HTTP_CODES.NOT_MODIFIED
-		};
-	}
-
-	// Remove milliseconds and round because date from HTTP header does not contain milliseconds, but mtime does.
-	if (headers['if-unmodified-since'] && mtimeRounded >= Math.round(new Date(headers['if-unmodified-since']) / 1000)) {
-		return {
-			statusCode: HTTP_CODES.WAS_MODIFIED,
-			headers   : {
-				'Last-Modified': fileStats.mtime.toUTCString()
-			}
-		};
-	}
-
-	if (headers.range) {
-		return getResponseDataRanges(fileStats, headers);
-	}
-
-	return getResponseDataWhole(fileStats, headers);
+function getFileStream (cfg, req, res, filePath, fileStats, options) {
+	return fs.createReadStream(filePath, options);
 }
 
 /**
- * Creates responseData object with body set to readable stream of requested file range(s).
+ * Sets up headers and statusCode on passed response object and returns file data stream.
  *
- * @todo: Implement support for multiple ranges (multipart/byteranges)
+ * It takes into account `If-Modified-Since` and `If-Unmodified-Since` request headers. When one of them
+ * matches, no stream will be returned and response will get a statusCode and required headers (if any).
  *
- * @param {!external:"fs.Stats"} fileStats
- * @param {!string}              fileStats.path    path to the file in local filesystem
- * @param {!Date}                fileStats.mtime   date of last modification of file content
- * @param {!Number}              fileStats.size    number of bytes of data file contains
- * @param {!Object}              headers
- * @return {module:serve-files~responseData}
+ * It calls either `prepareResponseDataRanges` or `prepareResponseDataWhole` depending on request `Range` header.
+ *
+ * @param {!module:serve-files~Configuration} cfg
+ * @param {!external:http.IncomingMessage}    req
+ * @param {!object}                           req.headers
+ * @param {string}                            [req.headers.if-modified-since]
+ * @param {string}                            [req.headers.if-unmodified-since]
+ * @param {string}                            [req.headers.if-range]
+ * @param {string}                            [req.headers.range]
+ * @param {!external:http.ServerResponse}     res
+ * @param {!string}                           filePath
+ * @param {!external:fs.Stats}                fileStats
+ * @param {!Date}                             fileStats.mtime                 date of last modification of file content
+ * @param {!number}                           fileStats.size                  number of bytes of data file contains
+ * @return {!external:fs.ReadStream|null}
  */
-function getResponseDataRanges (fileStats, headers) {
-	if (!headers.range) {
-		return getResponseDataWhole(fileStats, headers);
+function prepareResponseData (cfg, req, res, filePath, fileStats) {
+	if (!fileStats || !fileStats.mtime) {
+		res.statusCode = (fileStats && fileStats.statusCode) || HTTP_CODES.NOT_FOUND;
+		return null;
 	}
 
-	const maxEnd = Math.max(fileStats.size - 1, 0);
-	var start = headers.range.replace(/^bytes=/, '').match(/(-?[^-]+)(?:-(.+)|)/) || [];
-	var end = Math.min(parseInt(start[1 + 1] || maxEnd, 10) || 0, maxEnd);
+	// Always set Last-Modified header
+	res.setHeader('Last-Modified', fileStats.mtime.toUTCString());
+
+	// Remove milliseconds and round because dates from HTTP headers do not contain milliseconds, but mtime does.
+	const mtimeRounded = Math.round(fileStats.mtime / ONE_SECOND_IN_MILLISECONDS);
+
+	var temp = req.headers['if-modified-since'] || null;
+	if (temp && mtimeRounded <= Math.round(Date.parse(temp) / ONE_SECOND_IN_MILLISECONDS)) {
+		res.statusCode = HTTP_CODES.NOT_MODIFIED;
+		return null;
+	}
+
+	temp = req.headers['if-unmodified-since'] || null;
+	if (temp && mtimeRounded >= Math.round(Date.parse(temp) / ONE_SECOND_IN_MILLISECONDS)) {
+		res.statusCode = HTTP_CODES.WAS_MODIFIED;
+		return null;
+	}
+
+	// Set Content-Type header after we are sure that we will be sending data
+	res.setHeader('Content-Type', mime(filePath));
+
+	if (req.headers.range) {
+		temp = req.headers['if-range'] || null;
+		// TODO: add support for ETag matching
+		if (!temp || (!temp.match(/^(?:"|W\\)/) && mtimeRounded === Math.round(Date.parse(temp) / ONE_SECOND_IN_MILLISECONDS))) {
+			return prepareResponseDataRanges(cfg, req, res, filePath, fileStats);
+		}
+	}
+
+	return prepareResponseDataWhole(cfg, req, res, filePath, fileStats);
+}
+
+/**
+ * Sets up headers and statusCode on passed response object and returns readable stream of requested file range(s).
+ *
+ * TODO: Implement support for multiple ranges (multipart/byteranges).
+ *
+ * @param {!module:serve-files~Configuration} cfg
+ * @param {!external:http.IncomingMessage}    req
+ * @param {!object}                           req.headers
+ * @param {string}                            [req.headers.range]
+ * @param {!external:http.ServerResponse}     res
+ * @param {!string}                           filePath
+ * @param {!external:fs.Stats}                fileStats
+ * @param {!Date}                             fileStats.mtime   date of last modification of file content
+ * @param {!number}                           fileStats.size    number of bytes of data file contains
+ * @return {!external:fs.ReadStream|null}
+ */
+function prepareResponseDataRanges (cfg, req, res, filePath, fileStats) {
+	const range = req.headers.range;
+
+	if (!range) {
+		return prepareResponseDataWhole(cfg, req, res, filePath, fileStats);
+	}
+
+	// We support only a single range requests for now.
+	const lastByte = Math.max(fileStats.size - 1, 0);
+	// Multipart requests are treated as a single range - first range is used, rest is ignored.
+	var start = range.replace(/^bytes=/, '').match(/(-?[^-]+)(?:-(.+)|)/) || [];
+	var end = Math.min(parseInt(start[1 + 1] || lastByte, 10) || 0, lastByte);
 
 	start = parseInt(start[1] || 0, 10) || 0;
 
 	if (start < 0) {
-		start = Math.max(maxEnd + start + 1, 0);
-		end = maxEnd;
-	}
-
-	if (headers['if-range']) {
-		var ifRange = headers['if-range'];
-		// @todo: add support for ETag matching
-		if (ifRange.match(/^(?:"|W\\)/) || Math.round(fileStats.mtime / 1000) !== Math.round(new Date(ifRange) / 1000)) {
-			start = 0;
-			end = maxEnd;
-		}
+		start = Math.max(lastByte + start + 1, 0);
+		end = lastByte;
 	}
 
 	if (end < start) {
-		return {
-			statusCode: HTTP_CODES.NOT_IN_RANGE,
-			headers   : {
-				'Content-Range': 'bytes */' + fileStats.size,
-				'Accept-Ranges': 'bytes'
-			}
-		};
+		res.statusCode = HTTP_CODES.NOT_IN_RANGE;
+
+		res.setHeader('Content-Range', `bytes */${fileStats.size}`);
+		res.setHeader('Accept-Ranges', 'bytes');
+
+		return null;
 	}
 
-	var stream = fs.createReadStream(fileStats.path, {
-		start: start,
-		end  : end
-	});
+	res.statusCode = HTTP_CODES.OK_RANGE;
 
-	return {
-		body      : stream,
-		statusCode: HTTP_CODES.OK_RANGE,
-		headers   : {
-			'Content-Type'  : mime(fileStats.path),
-			'Content-Length': Math.min(fileStats.size, end - start + 1),
-			'Content-Range' : 'bytes ' + start + '-' + end + '/' + fileStats.size,
-			'Accept-Ranges' : 'bytes',
-			'Last-Modified' : fileStats.mtime.toUTCString()
-		}
-	};
-}
+	res.setHeader('Content-Length', Math.min(fileStats.size, end - start + 1));
+	res.setHeader('Content-Range', `bytes ${start}-${end}/${fileStats.size}`);
+	res.setHeader('Accept-Ranges', 'bytes');
 
-/**
- * Creates responseData object with body set to readable stream of requested file.
- *
- * @param {!external:"fs.Stats"} fileStats
- * @param {!string}              fileStats.path    path to the file in local filesystem
- * @param {!Date}                fileStats.mtime   date of last modification of file content
- * @param {!Number}              fileStats.size    number of bytes of data file contains
- * @param {!Object}              headers
- * @return {module:serve-files~responseData}
- */
-function getResponseDataWhole (fileStats/* , headers*/) {
-	return {
-		body      : fs.createReadStream(fileStats.path),
-		statusCode: HTTP_CODES.OK,
-		headers   : {
-			'Content-Type'  : mime(fileStats.path),
-			'Content-Length': fileStats.size,
-			'Last-Modified' : fileStats.mtime.toUTCString()
-		}
-	};
-}
-
-/**
- * Appends `Cache-Control`, `Expires` and `Pragma` (only if needed) headers.
- *
- * @param {!Object} headers
- * @param {!number} cacheTimeInSeconds=0   Pass zero or less to disable cache.
- */
-function appendCacheHeaders (headers, cacheTimeInSeconds) {
-	headers['Cache-Control'] = (cacheTimeInSeconds > 1 ? 'private, max-age=' + cacheTimeInSeconds : 'no-cache, no-store, must-revalidate');
-	headers.Expires = (cacheTimeInSeconds > 1 ? (new Date(Date.now() + (cacheTimeInSeconds * 1000))).toUTCString() : '0');
-
-	if (cacheTimeInSeconds < 1) {
-		headers.Pragma = 'no-cache';
+	if (req.method === 'HEAD') {
+		return null;
 	}
 
-	return headers;
+	return cfg.getFileStream(cfg, req, res, filePath, fileStats, {start, end});
 }
 
 /**
- * Calls back with {@link module:serve-files~responseData} object.
+ * Sets up headers and statusCode on passed response object and returns readable stream of requested file.
  *
- * @param {!module:serve-files~configuration} cfg
+ * @param {!module:serve-files~Configuration} cfg
+ * @param {!external:http.IncomingMessage}    req
+ * @param {!external:http.ServerResponse}     res
  * @param {!string}                           filePath
- * @param {!Object}                           headers    From http.IncommingMessage
- * @param {!Function}                         callback
+ * @param {!external:fs.Stats}                fileStats
+ * @param {!Date}                             fileStats.mtime   date of last modification of file content
+ * @param {!number}                           fileStats.size    number of bytes of data file contains
+ * @return {!external:fs.ReadStream|null}
  */
-function prepareFileResponse (cfg, filePath, headers, callback) {
-	cfg.getFileStats(cfg, filePath, (err, fileStats) => {
-		var data;
+function prepareResponseDataWhole (cfg, req, res, filePath, fileStats) {
+	res.statusCode = HTTP_CODES.OK;
 
-		if (err || !fileStats) {
-			data = {
-				statusCode: HTTP_CODES.NOT_FOUND
-			};
-		}
-		else {
-			data = cfg.getResponseData(fileStats, headers);
-		}
+	res.setHeader('Content-Length', fileStats.size);
 
-		data.headers = appendCacheHeaders(data.headers || {}, cfg.cacheTimeInSeconds);
-		data.headers.Date = data.headers.Date || (new Date()).toUTCString();
+	if (req.method === 'HEAD') {
+		return null;
+	}
 
-		callback(null, data);
-	});
+	return cfg.getFileStream(cfg, req, res, filePath, fileStats, null);
 }
 
 /**
- * HTTP response
+ * Appends `Cache-Control` and `Expires` headers to response object.
  *
- * @external "http.ServerResponse"
- * @see {@link https://nodejs.org/api/http.html#http_class_http_serverresponse}
+ * @param {!external:http.ServerResponse}   res
+ * @param {!number}                         [cacheTimeInSeconds=0]   Pass zero or less to disable cache.
  */
+function appendCacheHeaders (res, cacheTimeInSeconds) {
+	if (cacheTimeInSeconds > 1) {
+		res.setHeader('Cache-Control', `private, immutable, max-age=${cacheTimeInSeconds}`);
+		res.setHeader('Expires', (new Date(Date.now() + (cacheTimeInSeconds * ONE_SECOND_IN_MILLISECONDS))).toUTCString());
+	}
+	else {
+		res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+		res.setHeader('Expires', '0');
+	}
+}
+
+/**
+ * Load data from file, append cache headers and send response.
+ *
+ * @param {!module:serve-files~Configuration} cfg
+ * @param {!external:http.IncomingMessage}    req
+ * @param {!external:http.ServerResponse}     res
+ * @param {!string}                           filePath
+ * @param {!external:fs.Stats}                fileStats
+ */
+function serveFileResponse (cfg, req, res, filePath, fileStats) {
+	const responseData = cfg.prepareResponseData(cfg, req, res, filePath, fileStats);
+	cfg.appendCacheHeaders(res, cfg.cacheTimeInSeconds);
+	cfg.sendResponseData(cfg, req, res, filePath, fileStats, responseData);
+}
 
 /**
  * Send prepared response to client.
  *
- * @param {!module:serve-files~configuration} cfg
- * @param {Function[]}                        [cfg.standardResponses]
- * @param {module:serve-files~responseData}   fileResponse
- * @param {!external:"http.ServerResponse"}   res
+ * @param {!module:serve-files~Configuration} cfg
+ * @param {!external:http.IncomingMessage}    req
+ * @param {!external:http.ServerResponse}     res
+ * @param {!string}                           filePath
+ * @param {!external:fs.Stats}                fileStats
+ * @param {external:fs.ReadStream}            [data=null]
  */
-function serveFileResponse (cfg, fileResponse, res) {
-	if (cfg.standardResponses && cfg.standardResponses[fileResponse.statusCode]) {
-		return cfg.standardResponses[fileResponse.statusCode](fileResponse);
+function sendResponseData (cfg, req, res, filePath, fileStats, data) {
+	if (req.method === 'HEAD' || !data) {
+		res.end();
+		return;
 	}
 
-	res.writeHead(fileResponse.statusCode, fileResponse.headers);
-	// @todo: think of a way to result with 500 if/when file stream errors, because headers are already sent by then :/
-	if (fileResponse.body && fileResponse.body.pipe) {
-		fileResponse.body.pipe(res);
+	// TODO: think of a way to result with 500 if/when file stream errors, because headers are already sent by then :/
+	if (typeof data.pipe !== 'function') {
+		res.end(data);
+		return;
 	}
-	else {
-		res.end(fileResponse.body);
-	}
+
+	const cleanupData = () => data.destroy();
+
+	res.on('close', cleanupData);
+	// TODO: Write tests for both error situations
+	res.on('error', cleanupData);
+	data.on('error', () => res.end());
+	data.pipe(res);
 }
 
 /**
  * Create function that will handle serving files.
  *
  * @example
- * var fileHandler = serveFiles();
- * var server = http.createServer(function (req, res) {
- *     fileHandler(req, res, err => console.error(err));
+ * var fileHandler = createFileResponseHandler();
+ * var server = http.createServer(function onRequest (req, res) {
+ * 	fileHandler(req, res, () => console.log(`Finished ${req.method} ${req.url}`));
  * });
  *
- * @param {object}  [options]
- * @param {boolean} [options.followSymbolicLinks=false]    symbolic links will not be followed by default, i.e., they will not be served
- * @param {number}  [options.cacheTimeInSeconds=0]         HTTP cache will be disabled by default
- * @param {string}  [options.documentRoot=process.cwd()]   files outside of root path will not be served
- * @param {string}  [options.parsedURLName='urlParsed']    name of an optional property of a request object, which contains result of `url.parse(req.url)`
- * @return {Function|Error}
+ * @param {object}  [options]                              See properties of {@link module:serve-files~Configuration}
+ * @param {boolean} [options.followSymbolicLinks=false]
+ * @param {number}  [options.cacheTimeInSeconds=0]
+ * @param {string}  [options.documentRoot=process.cwd()]
+ * @return {Function|error}
  */
 function createFileResponseHandler (options) {
 	const cfg = createConfiguration(options);
@@ -395,8 +460,8 @@ function createFileResponseHandler (options) {
 
 	/**
 	 * @private
-	 * @param {!external:"http.IncomingMessage"} req
-	 * @param {!external:"http.ServerResponse"}  res
+	 * @param {!external:http.IncomingMessage}   req
+	 * @param {!external:http.ServerResponse}    res
 	 * @param {Function}                         [callback]   called AFTER response is finished
 	 */
 	function serve (req, res, callback) {
@@ -404,17 +469,7 @@ function createFileResponseHandler (options) {
 			res.once('finish', callback);
 		}
 
-		const filePath = cfg.getFilePath(cfg, req);
-
-		prepareFileResponse(cfg, filePath, req.headers, (err, data) => {
-			if (err) {
-				data = {
-					statusCode: HTTP_CODES.NOT_FOUND
-				};
-			}
-
-			serveFileResponse(cfg, data, res);
-		});
+		cfg.getFileInfo(cfg, req, res, cfg.getFilePath(cfg, req), cfg.serveFileResponse);
 	}
 
 	return serve;
