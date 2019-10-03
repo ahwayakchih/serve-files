@@ -20,6 +20,7 @@ const DURATION = parseInt(process.env.DURATION || DEFAULT_DURATION, 10);
 const CONNECTIONS = parseInt(process.env.CONNECTIONS || DEFAULT_CONNECTIONS, 10);
 
 const MINUTE_AS_SECONDS = 60;
+const IS_TTY = process.stdout.isTTY;
 
 var docker = (function checkDocker () {
 	const fs = require('fs'); // eslint-disable-line global-require
@@ -34,7 +35,9 @@ var docker = (function checkDocker () {
 var where = docker ? `inside Docker (${docker})` : `natively (${os.release()})`;
 console.log(`Running ${where} with Node ${process.version} and ${os.cpus()[0].model} x ${os.cpus().length}.`);
 console.log(`Testing ${SERVERS.length} servers, with ${DURATION} seconds of ${CONNECTIONS} simultaneous connections each.`);
-console.log(`Test will take approximately ${(DURATION * SERVERS.length) / MINUTE_AS_SECONDS} minute(s).`);
+if (IS_TTY) {
+	console.log(`Test will take approximately ${(DURATION * SERVERS.length) / MINUTE_AS_SECONDS} minute(s).`);
+}
 
 /**
  * @private
@@ -52,7 +55,9 @@ function run (name, callback) {
 			return;
 		}
 
-		process.stdout.write(`. ${name}`);
+		if (IS_TTY) {
+			process.stdout.write(`. ${name}`);
+		}
 		autocannon({
 			url        : `http://localhost:${m.port}/index.js?foo[bar]=baz`,
 			title      : name,
@@ -61,8 +66,10 @@ function run (name, callback) {
 		}, (err, result) => {
 			s.kill();
 			s = null;
-			process.stdout.cursorTo(0);
-			process.stdout.write(`${err || result.non2xx ? '✗' : '✔'} ${name}\n`);
+			if (IS_TTY) {
+				process.stdout.cursorTo(0);
+				process.stdout.write(`${err || result.non2xx ? '✗' : '✔'} ${name}\n`);
+			}
 			callback(err, result);
 		});
 	});
