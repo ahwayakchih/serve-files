@@ -7,6 +7,7 @@ const path = require('path');
 const test = require('tape');
 const needle = require('needle');
 const serveFiles = require('../index.js');
+const getFileCacheSettings = require('../lib/getFileCacheSettings');
 
 const validateResult = require('./support/validateResult.js');
 
@@ -274,9 +275,30 @@ const TEST_RESPONSES = {
 	}
 };
 
+Object.keys(TEST_RESPONSES).forEach(msg => {
+	var clone = JSON.stringify(TEST_RESPONSES[msg]);
+	var testFSCache = '';
+
+	// HEAD
+	testFSCache = TEST_RESPONSES[`HEAD ${msg}`] = JSON.parse(clone);
+	testFSCache.request.method = 'head';
+	testFSCache.response.body = '';
+
+	// GET FSCache
+	testFSCache = TEST_RESPONSES[`FSCache: ${msg}`] = JSON.parse(clone);
+	testFSCache.options = Object.assign(getFileCacheSettings(), testFSCache.options);
+
+	// HEAD
+	testFSCache = TEST_RESPONSES[`FSCache: HEAD ${msg}`] = JSON.parse(clone);
+	testFSCache.options = Object.assign(getFileCacheSettings(), testFSCache.options);
+	testFSCache.request.method = 'head';
+	testFSCache.response.body = '';
+});
+
 function testResponse (t, data) {
+	var method = (data.request && data.request.method) || 'get';
 	var serve = serveFiles.createFileResponseHandler(data.options);
-	var s = mockup(serve, () => s.get(data.request.path, data.request.options || null, (err, res) => {
+	var s = mockup(serve, () => s[method](data.request.path, data.request.options || null, (err, res) => {
 		t.ifError(err, 'There should be no error from response');
 		if (res.body && res.body instanceof Buffer) {
 			res.body = res.body.toString();
@@ -291,15 +313,4 @@ function testResponse (t, data) {
 	}));
 }
 
-Object.keys(TEST_RESPONSES).forEach(msg => test('GET ' + msg, t => testResponse(t, TEST_RESPONSES[msg])));
-Object.keys(TEST_RESPONSES).forEach(msg => test('HEAD ' + msg, t => {
-	var data = TEST_RESPONSES[msg];
-	var body = data.response.body;
-	if (body) {
-		data.response.body = '';
-	}
-	testResponse(t, data);
-	if (body) {
-		data.response.body = body;
-	}
-}));
+Object.keys(TEST_RESPONSES).forEach(msg => test(msg, t => testResponse(t, TEST_RESPONSES[msg])));
