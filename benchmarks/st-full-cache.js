@@ -1,6 +1,6 @@
 const http = require('http');
 const path = require('path');
-const serveStatic = require('serve-static');
+const st = require('st');
 
 const DEFAULT_PORT = 3333;
 const DEFAULT_HTTP_CACHE = 3600;
@@ -9,18 +9,27 @@ const PORT = process.env.PORT || DEFAULT_PORT;
 const HOST = process.env.HOST || 'localhost';
 
 // Create file response handler
-module.exports = serveStatic(path.dirname(module.filename), {
-	// Try to disable features that are not supported by serve-files in hope for more "fair" comparison
-	acceptRanges: true,
-	cacheControl: true,
-	dotfiles    : 'allow',
-	etag        : false,
-	extensions  : false,
-	fallthrough : false,
-	index       : false,
-	lastModified: true,
-	maxAge      : DEFAULT_HTTP_CACHE,
-	redirect    : false
+module.exports = st({
+	path       : path.dirname(module.filename),
+	cache      : {
+		fd: {
+			max: 1000,
+			maxAge: DEFAULT_HTTP_CACHE
+		},
+		stat: {
+			max: 1000,
+			maxAge: DEFAULT_HTTP_CACHE
+		},
+		content: {
+			max: 1024 * 1024 * 64,
+			maxAge: DEFAULT_HTTP_CACHE
+		}
+	},
+	index      : false,
+	dot        : true,
+	passthrough: false,
+	gzip       : false,
+	cors       : true
 });
 
 if (require.main === module) {

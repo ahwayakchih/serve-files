@@ -3,6 +3,7 @@ const path = require('path');
 const Statique = require('statique');
 
 const DEFAULT_PORT = 3333;
+const DEFAULT_HTTP_CACHE = 3600;
 
 const PORT = process.env.PORT || DEFAULT_PORT;
 const HOST = process.env.HOST || 'localhost';
@@ -10,7 +11,7 @@ const HOST = process.env.HOST || 'localhost';
 // Create file response handler
 var fileResponse = new Statique({
 	root : path.dirname(module.filename),
-	cache: 0
+	cache: DEFAULT_HTTP_CACHE
 });
 
 module.exports = fileResponse.serve.bind(fileResponse);
