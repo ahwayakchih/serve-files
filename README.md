@@ -82,19 +82,19 @@ app.nodeValue('cfg', function () {
 });
 
 app.request.nodeValue('filePath', function (cfg, parsedUrl, callback) {
-	// We can do some additional "redirects" at file path level
+	// We can do some additional "redirects" at file path level.
 	callback(null, path.join(cfg.documentRoot, (parsedUrl.pathname || '/')));
 });
 
 app.request.nodeValue('fileStats', function (cfg, filePath, callback) {
-	// We can add some file cache at fileStats level
+	// We can add some file cache at fileStats level...
 	cfg.getFileInfo(cfg, filePath, function (filePath, fileStats) {
 		return !fileStats || fileStats instanceof Error ? callback(fileStats) : callback(null, fileStats);
 	});
 });
 
 app.request.nodeValue('fileResponse', function (cfg, filePath, fileStats, request, response, callback) {
-	// and/or add cache at file data level
+	// ... and/or add cache at file data level.
 	callback(null, cfg.prepareResponseData(cfg, request, response, filePath, fileStats));
 });
 
