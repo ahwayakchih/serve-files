@@ -4,13 +4,12 @@ const autocannon = require('autocannon');
 const serie = require('fastseries');
 
 const SERVERS = [
-	// 'node-static',
-	// 'serve-files',
-	// 'serve-files-fs-cache',
-	'serve-files-fs-cache-v2',
-	// 'serve-static',
-	// 'st',
-	// 'statique'
+	'node-static',
+	'serve-files',
+	'serve-files-fs-cache',
+	'serve-static',
+	'st',
+	'statique'
 ];
 
 const DEFAULT_DURATION = 60;
