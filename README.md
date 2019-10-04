@@ -41,7 +41,7 @@ serve-files 8080 ~/Downloads
 That will start server on port 8080 and will serve files from your "Downloads" directory.
 
 You can pass host name (defaults to none), port number (defaults to random) and/or path to directory (defaults to current working directory) as parameters, in any order.
-It will never follow symbolic links, and always serve files with cache headers set to one hour.
+It will never follow symbolic links, it will keep file stats cached and always serve files with cache headers set to one hour.
 
 
 ## Usage (API)
@@ -130,7 +130,7 @@ npm test
 
 ## Benchmarks
 
-These benchmarks are just to make sure that `serve-files` speed is comparable (so not much slower at least ;) with other, similar modules.
+These benchmarks are just to make sure that `serve-files` speed is comparable (not much slower at least ;) with other, similar modules.
 You can re-run benchmarks locally with: `npm run benchmarks`.
 
 ```
