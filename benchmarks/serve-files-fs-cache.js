@@ -13,7 +13,7 @@ const HOST = process.env.HOST || 'localhost';
 module.exports = serveFiles.createFileResponseHandler(Object.assign(getFileCacheSettings(), {
 	followSymbolicLinks: false,
 	cacheTimeInSeconds : DEFAULT_HTTP_CACHE,
-	documentRoot       : path.dirname(module.filename),
+	documentRoot       : path.dirname(module.filename)
 }));
 
 if (require.main === module) {

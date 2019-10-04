@@ -30,7 +30,7 @@
     "c8": "^5.0.4",
     "docdash": "^1.1.1",
     "eslint": "^6.4.0",
-    "eslint-plugin-jsdoc": "^15.9.7",
+    "eslint-plugin-jsdoc": "^15.9.9",
     "fastseries": "^1.7.2",
     "jsdoc": "^3.6.3",
     "needle": "^2.4.0",

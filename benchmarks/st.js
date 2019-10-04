@@ -3,7 +3,6 @@ const path = require('path');
 const st = require('st');
 
 const DEFAULT_PORT = 3333;
-const DEFAULT_HTTP_CACHE = 3600;
 
 const PORT = process.env.PORT || DEFAULT_PORT;
 const HOST = process.env.HOST || 'localhost';

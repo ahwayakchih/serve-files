@@ -8,20 +8,22 @@ const DEFAULT_HTTP_CACHE = 3600;
 const PORT = process.env.PORT || DEFAULT_PORT;
 const HOST = process.env.HOST || 'localhost';
 
+const KILOBYTE = 1024;
+
 // Create file response handler
 module.exports = st({
-	path       : path.dirname(module.filename),
-	cache      : {
+	path : path.dirname(module.filename),
+	cache: {
 		fd: {
-			max: 1000,
+			max   : KILOBYTE,
 			maxAge: DEFAULT_HTTP_CACHE
 		},
 		stat: {
-			max: 1000,
+			max   : KILOBYTE,
 			maxAge: DEFAULT_HTTP_CACHE
 		},
 		content: {
-			max: 1024 * 1024 * 64,
+			max   : KILOBYTE * KILOBYTE,
 			maxAge: DEFAULT_HTTP_CACHE
 		}
 	},
