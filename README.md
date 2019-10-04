@@ -30,7 +30,7 @@ npm install https://github.com/ahwayakchih/serve-files
 ```
 
 
-## Usage
+## Usage (CLI)
 
 If you install `serve-files` globally, you can use `serve-files` command to quickly start HTTP file server, for example:
 
@@ -44,7 +44,7 @@ You can pass host name (defaults to none), port number (defaults to random) and/
 It will never follow symbolic links, and always serve files with cache headers set to one hour.
 
 
-## Usage for developers
+## Usage (API)
 
 Example of vastly simplified (not advised for production) use:
 
@@ -112,6 +112,21 @@ app.route('GET *', function (fileResponse, response) {
 });
 ```
 
+## API Documentation
+
+To generate documentation for this module, clone module from repository (package does not include required files) and use:
+
+```sh
+npm run doc
+```
+
+## Testing
+
+To run tests, clone module (see [API Dcoumentation](#API-Documentation)) and use:
+
+```sh
+npm test
+```
 
 ## Benchmarks
 
