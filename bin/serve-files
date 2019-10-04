@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-const http        = require('http');
-const path        = require('path');
-const serveFiles  = require('../index.js');
-const connections = require('../lib/getSetOfSockets.js')();
+const http                 = require('http');
+const path                 = require('path');
+const serveFiles           = require('../index.js');
+const connections          = require('../lib/getSetOfSockets.js')();
+const getFileCacheSettings = require('../lib/getFileCacheSettings.js');
 
 const CONFIG = serveFiles.parseArguments(process.argv);
 const CACHE_TIME = 3600;
@@ -13,11 +14,11 @@ if (CONFIG.usageText !== null) {
 	process.exit(0); // eslint-disable-line no-process-exit
 }
 
-const server = http.createServer(serveFiles.createFileResponseHandler({
+const server = http.createServer(serveFiles.createFileResponseHandler(Object.assign(getFileCacheSettings(), {
 	documentRoot       : CONFIG.documentRoot,
 	followSymbolicLinks: false,
 	cacheTimeInSeconds : CACHE_TIME
-}));
+})));
 
 server.listen(CONFIG.port, CONFIG.hostname, null, onServerListening);
 
