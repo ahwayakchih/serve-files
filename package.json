@@ -51,5 +51,10 @@
   "repository": {
     "type": "git",
     "url": "git://github.com/ahwayakchih/serve-files.git"
-  }
+  },
+  "files": [
+    "bin/**",
+    "lib/**",
+    "index.js"
+  ]
 }
