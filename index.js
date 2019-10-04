@@ -38,7 +38,6 @@ const IS_WINDOWS = os.platform() === 'win32';
  * Configuration object.
  *
  * @typedef {object} Configuration
- * @property {Map|boolean} cacheOfFileStats=true        can be a Map (or Map-like object) or `true` (in which case it will be replaced with `new Map()`)
  * @property {boolean}     followSymbolicLinks=false    symbolic links will not be followed by default, i.e., they will not be served
  * @property {number}      cacheTimeInSeconds=0         HTTP cache will be disabled by default
  * @property {string}      documentRoot=process.cwd()   files outside of root path will not be served

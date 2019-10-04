@@ -46,7 +46,7 @@ It will never follow symbolic links, and always serve files with cache headers s
 
 ## Usage for developers
 
-Example of vastly simplified (not so much for production) use:
+Example of vastly simplified (not advised for production) use:
 
 ```javascript
 const http = require('http');
