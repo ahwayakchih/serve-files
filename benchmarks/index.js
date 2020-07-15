@@ -8,6 +8,7 @@ const SERVERS = [
 	'serve-files',
 	'serve-files-fs-cache',
 	'serve-static',
+	'sirv',
 	'st',
 	'st-full-cache',
 	'statique'

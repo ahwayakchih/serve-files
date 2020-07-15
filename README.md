@@ -134,19 +134,21 @@ These benchmarks are just to make sure that `serve-files` speed is comparable (n
 You can re-run benchmarks locally with: `npm run benchmarks`.
 
 ```
-Running inside Docker (Alpine Linux v3.10) with Node v12.11.1 and Intel(R) Core(TM) i7-3537U CPU @ 2.00GHz x 2.
-Testing 7 servers, with 60 seconds of 100 simultaneous connections each.
+Running inside Docker (Alpine Linux v3.12) with Node v14.5.0 and Intel(R) Core(TM) i7-3537U CPU @ 2.00GHz x 2.
+Testing 8 servers, with 60 seconds of 100 simultaneous connections each.
+Test will take approximately 8 minute(s).
 
 ┌─────────┬────────────────────────┬──────────┬─────────┬──────────┬──────────┬────────┬────────┐
 │ (index) │         title          │ requests │ latency │  bytes   │ timeouts │ errors │ non2xx │
 ├─────────┼────────────────────────┼──────────┼─────────┼──────────┼──────────┼────────┼────────┤
-│    0    │    'st-full-cache'     │  11879   │   31    │ 74579967 │    0     │   0    │   0    │
-│    1    │          'st'          │   9791   │   53    │ 61374463 │    0     │   0    │   0    │
-│    2    │ 'serve-files-fs-cache' │   9663   │   33    │ 59801599 │    0     │   0    │   0    │
-│    3    │     'node-static'      │   7031   │   60    │ 43450367 │    0     │   0    │   0    │
-│    4    │     'serve-static'     │   6643   │   60    │ 40927231 │    0     │   0    │   0    │
-│    5    │     'serve-files'      │   5967   │   62    │ 36962303 │    0     │   0    │   0    │
-│    6    │       'statique'       │   4367   │   76    │ 26968063 │    0     │   0    │   0    │
+│    0    │    'st-full-cache'     │  10407   │   62    │ 65437695 │    0     │ 446197 │   0    │
+│    1    │          'st'          │   8607   │   58    │ 54001663 │    0     │   0    │   0    │
+│    2    │ 'serve-files-fs-cache' │   8223   │   34    │ 50987007 │    0     │   0    │   0    │
+│    3    │     'node-static'      │   6087   │   64    │ 37683199 │    0     │   0    │   0    │
+│    4    │         'sirv'         │   5947   │   62    │ 36438015 │    0     │   0    │   0    │
+│    5    │     'serve-static'     │   5883   │   63    │ 36306943 │    0     │   0    │   0    │
+│    6    │     'serve-files'      │   5547   │   66    │ 34406399 │    0     │   0    │   0    │
+│    7    │       'statique'       │   4115   │   80    │ 25460735 │    0     │   0    │   0    │
 └─────────┴────────────────────────┴──────────┴─────────┴──────────┴──────────┴────────┴────────┘
 ```
 
