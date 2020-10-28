@@ -38,9 +38,9 @@ const IS_WINDOWS = os.platform() === 'win32';
  * Configuration object.
  *
  * @typedef {object} Configuration
- * @property {boolean}     followSymbolicLinks=false    symbolic links will not be followed by default, i.e., they will not be served
- * @property {number}      cacheTimeInSeconds=0         HTTP cache will be disabled by default
- * @property {string}      documentRoot=process.cwd()   files outside of root path will not be served
+ * @property {boolean}     [followSymbolicLinks=false]    symbolic links will not be followed by default, i.e., they will not be served
+ * @property {number}      [cacheTimeInSeconds=0]         HTTP cache will be disabled by default
+ * @property {string}      [documentRoot=process.cwd()]   files outside of root path will not be served
  * @property {Function}    getFilePath
  * @property {Function}    getFileInfo
  * @property {Function}    getFileStream
@@ -381,7 +381,7 @@ function prepareResponseDataWhole (cfg, req, res, filePath, fileStats) {
 function appendCacheHeaders (res, cacheTimeInSeconds) {
 	if (cacheTimeInSeconds > 1) {
 		res.setHeader('Cache-Control', `private, immutable, max-age=${cacheTimeInSeconds}`);
-		res.setHeader('Expires', (new Date(Date.now() + (cacheTimeInSeconds * ONE_SECOND_IN_MILLISECONDS))).toUTCString());
+		res.setHeader('Expires', new Date(Date.now() + (cacheTimeInSeconds * ONE_SECOND_IN_MILLISECONDS)).toUTCString());
 	}
 	else {
 		res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');

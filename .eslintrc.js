@@ -331,7 +331,7 @@ module.exports = {
 		'jsdoc/require-returns-check': 1,
 		'jsdoc/require-returns-description': 0,
 		'jsdoc/require-returns-type': 1,
-		'jsdoc/valid-types': 1
+		'jsdoc/valid-types': 0
 	},
 	settings: {
 		jsdoc: {

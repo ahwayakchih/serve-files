@@ -15,12 +15,9 @@ module.exports = sirv(path.dirname(module.filename), {
 	extensions: [],
 	gzip      : false,
 	brotli    : false,
-	// maxAge    : undefined,
 	immutable : false,
 	single    : false,
-	ignores   : false,
-	// onNoMatch : () => {},
-	// setHeaders: () => {},
+	ignores   : false
 });
 
 if (require.main === module) {
