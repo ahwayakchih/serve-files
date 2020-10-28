@@ -5,7 +5,7 @@ const sirv = require('sirv');
 const DEFAULT_PORT = 3333;
 
 const PORT = process.env.PORT || DEFAULT_PORT;
-const HOST = process.env.HOST || 'localhost';
+const HOST = process.env.HOST || '127.0.0.1';
 
 // Create file response handler
 module.exports = sirv(path.dirname(module.filename), {

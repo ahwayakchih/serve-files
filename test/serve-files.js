@@ -21,7 +21,7 @@ function mockup (requestHandler, callback) {
 	var server = http.createServer(requestHandler);
 	server.href = null;
 
-	server.listen(0, 'localhost', function () {
+	server.listen(0, '127.0.0.1', function () {
 		var address = this.address();
 		this.href = 'http://' + address.address + ':' + address.port;
 		callback(null, this.href);
