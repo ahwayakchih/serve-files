@@ -23,17 +23,18 @@ const CONNECTIONS = parseInt(process.env.CONNECTIONS || DEFAULT_CONNECTIONS, 10)
 const MINUTE_AS_SECONDS = 60;
 const IS_TTY = process.stdout.isTTY;
 
-var docker = (function checkDocker () {
+var container = (function checkContainer () {
 	const fs = require('fs'); // eslint-disable-line global-require
 	try {
-		return fs.readFileSync('/proc/self/cgroup', 'utf8').indexOf('/docker/') !== -1
-			&& (fs.readFileSync('/etc/os-release', 'utf8').match(/PRETTY_NAME="([^"]+)"/) || [null, 'unknown'])[1];
+		const engine = process.env.container || (fs.readFileSync('/proc/self/cgroup', 'utf8').indexOf('/docker/') !== -1 && 'docker') || null;
+		const system = engine && (fs.readFileSync('/etc/os-release', 'utf8').match(/PRETTY_NAME="([^"]+)"/) || [null, 'unknown'])[1];
+		return engine && `${engine[0].toUpperCase()}${engine.substr(1)} (${system})`;
 	}
 	catch (e) {
 		return false;
 	}
 })();
-var where = docker ? `inside Docker (${docker})` : `natively (${os.release()})`;
+var where = container ? `inside ${container}` : `natively (${os.release()})`;
 console.log(`Running ${where} with Node ${process.version} and ${os.cpus()[0].model} x ${os.cpus().length}.`);
 console.log(`Testing ${SERVERS.length} servers, with ${DURATION} seconds of ${CONNECTIONS} simultaneous connections each.`);
 if (IS_TTY) {
@@ -60,7 +61,7 @@ function run (name, callback) {
 			process.stdout.write(`. ${name}`);
 		}
 		autocannon({
-			url        : `http://localhost:${m.port}/index.js?foo[bar]=baz`,
+			url        : `http://${m.host || '127.0.0.1'}:${m.port}/index.js?foo[bar]=baz`,
 			title      : name,
 			duration   : DURATION,
 			connections: CONNECTIONS

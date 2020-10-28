@@ -21,7 +21,7 @@ if (require.main === module) {
 		const address = this.address(); // eslint-disable-line no-invalid-this
 
 		if (process.send) {
-			process.send({port: address.port});
+			process.send({port: address.port, host: address.host});
 		}
 	});
 }
