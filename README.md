@@ -134,22 +134,23 @@ These benchmarks are just to make sure that `serve-files` speed is comparable (n
 You can re-run benchmarks locally with: `npm run benchmarks`.
 
 ```
-Running inside Docker (Alpine Linux v3.12) with Node v14.5.0 and Intel(R) Core(TM) i7-3537U CPU @ 2.00GHz x 2.
+Running inside Docker (Alpine Linux v3.12) with Node v15.0.1 and Intel(R) Core(TM) i7-3537U CPU @ 2.00GHz x 2.
 Testing 8 servers, with 60 seconds of 100 simultaneous connections each.
 Test will take approximately 8 minute(s).
 
 ┌─────────┬────────────────────────┬──────────┬─────────┬──────────┬──────────┬────────┬────────┐
 │ (index) │         title          │ requests │ latency │  bytes   │ timeouts │ errors │ non2xx │
 ├─────────┼────────────────────────┼──────────┼─────────┼──────────┼──────────┼────────┼────────┤
-│    0    │    'st-full-cache'     │  10407   │   62    │ 65437695 │    0     │ 446197 │   0    │
-│    1    │          'st'          │   8607   │   58    │ 54001663 │    0     │   0    │   0    │
-│    2    │ 'serve-files-fs-cache' │   8223   │   34    │ 50987007 │    0     │   0    │   0    │
-│    3    │     'node-static'      │   6087   │   64    │ 37683199 │    0     │   0    │   0    │
-│    4    │         'sirv'         │   5947   │   62    │ 36438015 │    0     │   0    │   0    │
-│    5    │     'serve-static'     │   5883   │   63    │ 36306943 │    0     │   0    │   0    │
-│    6    │     'serve-files'      │   5547   │   66    │ 34406399 │    0     │   0    │   0    │
-│    7    │       'statique'       │   4115   │   80    │ 25460735 │    0     │   0    │   0    │
+│    0    │    'st-full-cache'     │   6963   │   49    │ 43941887 │    0     │   0    │   0    │
+│    1    │          'st'          │   5471   │   58    │ 34471935 │    0     │   0    │   0    │
+│    2    │ 'serve-files-fs-cache' │   5315   │   58    │ 33095679 │    0     │   0    │   0    │
+│    3    │     'node-static'      │   4135   │   98    │ 25706495 │    0     │   0    │   0    │
+│    4    │     'serve-static'     │   3949   │   81    │ 24461311 │    0     │   0    │   0    │
+│    5    │         'sirv'         │   3861   │   75    │ 23740415 │    0     │   0    │   0    │
+│    6    │     'serve-files'      │   3569   │   88    │ 22233087 │    0     │   0    │   0    │
+│    7    │       'statique'       │   2235   │   135   │ 13885439 │    0     │   0    │   0    │
 └─────────┴────────────────────────┴──────────┴─────────┴──────────┴──────────┴────────┴────────┘
+
 ```
 
 `st` is a bit of a cheater there, because even with cache fully disabled, it still caches file descriptors (which is easy to check: repeat benchmark for it, but with enabled `cache.fd` and disabled other `cache.*` options for it). Caching them gives huge speed up.
