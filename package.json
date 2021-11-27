@@ -1,6 +1,6 @@
 {
   "name": "serve-files",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Serve files",
   "keywords": "file, server",
   "main": "index.js",
