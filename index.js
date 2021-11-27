@@ -54,6 +54,7 @@ const IS_WINDOWS = os.platform() === 'win32';
  * @type {Configuration}
  */
 const DEFAULT_CONFIG = {
+	DEBUG              : !!process.env.DEBUG,
 	followSymbolicLinks: false,
 	cacheTimeInSeconds : 0,
 	documentRoot       : process.cwd(),
@@ -402,6 +403,10 @@ function serveFileResponse (cfg, req, res, filePath, fileStats) {
 	const responseData = cfg.prepareResponseData(cfg, req, res, filePath, fileStats);
 	cfg.appendCacheHeaders(res, cfg.cacheTimeInSeconds);
 	cfg.sendResponseData(cfg, req, res, filePath, fileStats, responseData);
+
+	if (cfg.DEBUG) {
+		console.debug(req.method, req.url, res.statusCode);
+	}
 }
 
 /**
@@ -466,6 +471,10 @@ function createFileResponseHandler (options) {
 	function serve (req, res, callback) {
 		if (callback && callback instanceof Function) {
 			res.once('finish', callback);
+		}
+
+		if (cfg.DEBUG) {
+			console.debug(req.method, req.url);
 		}
 
 		cfg.getFileInfo(cfg, req, res, cfg.getFilePath(cfg, req), cfg.serveFileResponse);
