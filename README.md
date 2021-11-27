@@ -88,7 +88,7 @@ app.request.nodeValue('filePath', function (cfg, parsedUrl, callback) {
 
 app.request.nodeValue('fileStats', function (cfg, filePath, callback) {
 	// We can add some file cache at fileStats level...
-	cfg.getFileInfo(cfg, filePath, function (filePath, fileStats) {
+	cfg.getFileInfo(cfg, filePath, function (cfg, request, response, filePath, fileStats) {
 		return !fileStats || fileStats instanceof Error ? callback(fileStats) : callback(null, fileStats);
 	});
 });
@@ -134,21 +134,28 @@ These benchmarks are just to make sure that `serve-files` speed is comparable (n
 You can re-run benchmarks locally with: `npm run benchmarks`.
 
 ```
-Running inside Docker (Alpine Linux v3.12) with Node v15.0.1 and Intel(R) Core(TM) i7-3537U CPU @ 2.00GHz x 2.
+Running inside Podman (Alpine Linux v3.14) with Node v16.9.0 and Intel(R) Core(TM) i7-3537U CPU @ 2.00GHz x 2.
 Testing 8 servers, with 60 seconds of 100 simultaneous connections each.
 Test will take approximately 8 minute(s).
-
+✔ node-static
+✔ serve-files
+✔ serve-files-fs-cache
+✔ serve-static
+✔ sirv
+✔ st
+✔ st-full-cache
+✔ statique
 ┌─────────┬────────────────────────┬──────────┬─────────┬──────────┬──────────┬────────┬────────┐
 │ (index) │         title          │ requests │ latency │  bytes   │ timeouts │ errors │ non2xx │
 ├─────────┼────────────────────────┼──────────┼─────────┼──────────┼──────────┼────────┼────────┤
-│    0    │    'st-full-cache'     │   6963   │   49    │ 43941887 │    0     │   0    │   0    │
-│    1    │          'st'          │   5471   │   58    │ 34471935 │    0     │   0    │   0    │
-│    2    │ 'serve-files-fs-cache' │   5315   │   58    │ 33095679 │    0     │   0    │   0    │
-│    3    │     'node-static'      │   4135   │   98    │ 25706495 │    0     │   0    │   0    │
-│    4    │     'serve-static'     │   3949   │   81    │ 24461311 │    0     │   0    │   0    │
-│    5    │         'sirv'         │   3861   │   75    │ 23740415 │    0     │   0    │   0    │
-│    6    │     'serve-files'      │   3569   │   88    │ 22233087 │    0     │   0    │   0    │
-│    7    │       'statique'       │   2235   │   135   │ 13885439 │    0     │   0    │   0    │
+│    0    │    'st-full-cache'     │   7055   │   91    │ 45776895 │    0     │ 184398 │   0    │
+│    1    │ 'serve-files-fs-cache' │   4727   │   72    │ 30244863 │    0     │   0    │   0    │
+│    2    │          'st'          │   4603   │   76    │ 29802495 │    0     │   0    │   0    │
+│    3    │     'node-static'      │   4049   │   87    │ 25870335 │    0     │   0    │   0    │
+│    4    │     'serve-static'     │   3961   │   86    │ 25231359 │    0     │   0    │   0    │
+│    5    │         'sirv'         │   3233   │   96    │ 20430847 │    0     │   0    │   0    │
+│    6    │     'serve-files'      │   3049   │   110   │ 19513343 │    0     │   0    │   0    │
+│    7    │       'statique'       │   2185   │   164   │ 13959167 │    0     │   0    │   0    │
 └─────────┴────────────────────────┴──────────┴─────────┴──────────┴──────────┴────────┴────────┘
 
 ```
